@@ -1,2 +1,2 @@
 # SDN
-SDN(ryu+ovs)
+ryu mininet-wifi ovs
