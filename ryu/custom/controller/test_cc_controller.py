@@ -9,6 +9,8 @@ def handle_flow_request(flow_req_msg):
     print(f"[CC] Match fields: {dict(flow_req_msg.match_fields)}")
 
 def run_cc():
+    print("[*] CC Controller starting...")
+    
     server = network.create_server_socket('0.0.0.0', 9000)
     print("[CC] Waiting for connection...")
     conn, addr = server.accept()
@@ -36,3 +38,5 @@ def run_cc():
 
 if __name__ == '__main__':
     run_cc()
+    
+
