@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package custom_protocol;
+
+// 顶层封装消息，包含类型和具体消息体
+message Envelope {
+  enum Type {
+    HELLO = 0;
+    TOPOLOGY_UPDATE = 1;
+    FLOW_MOD = 2;
+    FLOW_REQUEST = 3;
+    ERROR = 4;
+  }
+
+  Type type = 1;
+
+  oneof body {
+    Hello hello = 2;
+    TopologyUpdate topology_update = 3;
+    FlowMod flow_mod = 4;
+    FlowRequest flow_request = 5;
+    ErrorMsg error = 6;
+  }
+}
+
+// 各种消息体
+message Hello {
+  string node_id = 1;
+  string version = 2;
+}
+
+message TopologyUpdate {
+  int32 cluster_id = 1;
+  repeated string boundary_switches = 2;
+}
+
+message FlowRequest {
+  int32 src_cluster = 1;
+  int32 dst_cluster = 2;
+  map<string, string> match_fields = 3; // 如 {"ip_dst": "10.0.1.1"}
+}
+
+message FlowMod {
+  int32 cluster_id = 1;
+  repeated string actions = 2; // 简化示例，如 ["output:1"]
+  map<string, string> match_fields = 3;
+}
+
+message ErrorMsg {
+  int32 code = 1;
+  string reason = 2;
+}
