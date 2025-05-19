@@ -2,6 +2,7 @@ import socket
 
 def create_server_socket(ip, port):
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) #允许套接字在处于 TIME_WAIT 状态时仍然可以绑定相同地址和端口
     server.bind((ip, port))
     server.listen(5)
     return server
