@@ -19,7 +19,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   syntax='proto3',
   serialized_options=None,
   create_key=_descriptor._internal_create_key,
-  serialized_pb=b'\n\rmessage.proto\x12\x0f\x63ustom_protocol\"\x88\x03\n\x08\x45nvelope\x12,\n\x04type\x18\x01 \x01(\x0e\x32\x1e.custom_protocol.Envelope.Type\x12\'\n\x05hello\x18\x02 \x01(\x0b\x32\x16.custom_protocol.HelloH\x00\x12:\n\x0ftopology_update\x18\x03 \x01(\x0b\x32\x1f.custom_protocol.TopologyUpdateH\x00\x12,\n\x08\x66low_mod\x18\x04 \x01(\x0b\x32\x18.custom_protocol.FlowModH\x00\x12\x34\n\x0c\x66low_request\x18\x05 \x01(\x0b\x32\x1c.custom_protocol.FlowRequestH\x00\x12*\n\x05\x65rror\x18\x06 \x01(\x0b\x32\x19.custom_protocol.ErrorMsgH\x00\"Q\n\x04Type\x12\t\n\x05HELLO\x10\x00\x12\x13\n\x0fTOPOLOGY_UPDATE\x10\x01\x12\x0c\n\x08\x46LOW_MOD\x10\x02\x12\x10\n\x0c\x46LOW_REQUEST\x10\x03\x12\t\n\x05\x45RROR\x10\x04\x42\x06\n\x04\x62ody\")\n\x05Hello\x12\x0f\n\x07node_id\x18\x01 \x01(\t\x12\x0f\n\x07version\x18\x02 \x01(\t\"?\n\x0eTopologyUpdate\x12\x12\n\ncluster_id\x18\x01 \x01(\x05\x12\x19\n\x11\x62oundary_switches\x18\x02 \x03(\t\"\xb0\x01\n\x0b\x46lowRequest\x12\x13\n\x0bsrc_cluster\x18\x01 \x01(\x05\x12\x13\n\x0b\x64st_cluster\x18\x02 \x01(\x05\x12\x43\n\x0cmatch_fields\x18\x03 \x03(\x0b\x32-.custom_protocol.FlowRequest.MatchFieldsEntry\x1a\x32\n\x10MatchFieldsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\xa3\x01\n\x07\x46lowMod\x12\x12\n\ncluster_id\x18\x01 \x01(\x05\x12\x0f\n\x07\x61\x63tions\x18\x02 \x03(\t\x12?\n\x0cmatch_fields\x18\x03 \x03(\x0b\x32).custom_protocol.FlowMod.MatchFieldsEntry\x1a\x32\n\x10MatchFieldsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"(\n\x08\x45rrorMsg\x12\x0c\n\x04\x63ode\x18\x01 \x01(\x05\x12\x0e\n\x06reason\x18\x02 \x01(\tb\x06proto3'
+  serialized_pb=b'\n\rmessage.proto\x12\x0f\x63ustom_protocol\"\xca\x03\n\x08\x45nvelope\x12,\n\x04type\x18\x01 \x01(\x0e\x32\x1e.custom_protocol.Envelope.Type\x12\'\n\x05hello\x18\x02 \x01(\x0b\x32\x16.custom_protocol.HelloH\x00\x12:\n\x0ftopology_update\x18\x03 \x01(\x0b\x32\x1f.custom_protocol.TopologyUpdateH\x00\x12,\n\x08\x66low_mod\x18\x04 \x01(\x0b\x32\x18.custom_protocol.FlowModH\x00\x12\x34\n\x0c\x66low_request\x18\x05 \x01(\x0b\x32\x1c.custom_protocol.FlowRequestH\x00\x12\x30\n\nflow_reply\x18\x06 \x01(\x0b\x32\x1a.custom_protocol.FlowReplyH\x00\x12*\n\x05\x65rror\x18\x07 \x01(\x0b\x32\x19.custom_protocol.ErrorMsgH\x00\"a\n\x04Type\x12\t\n\x05HELLO\x10\x00\x12\x13\n\x0fTOPOLOGY_UPDATE\x10\x01\x12\x0c\n\x08\x46LOW_MOD\x10\x02\x12\x10\n\x0c\x46LOW_REQUEST\x10\x03\x12\x0e\n\nFLOW_REPLY\x10\x04\x12\t\n\x05\x45RROR\x10\x05\x42\x06\n\x04\x62ody\")\n\x05Hello\x12\x0f\n\x07node_id\x18\x01 \x01(\t\x12\x0f\n\x07version\x18\x02 \x01(\t\"?\n\x0eTopologyUpdate\x12\x12\n\ncluster_id\x18\x01 \x01(\x05\x12\x19\n\x11\x62oundary_switches\x18\x02 \x03(\t\"\xb0\x01\n\x0b\x46lowRequest\x12\x13\n\x0bsrc_cluster\x18\x01 \x01(\x05\x12\x13\n\x0b\x64st_cluster\x18\x02 \x01(\x05\x12\x43\n\x0cmatch_fields\x18\x03 \x03(\x0b\x32-.custom_protocol.FlowRequest.MatchFieldsEntry\x1a\x32\n\x10MatchFieldsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\xa3\x01\n\x07\x46lowMod\x12\x12\n\ncluster_id\x18\x01 \x01(\x05\x12\x0f\n\x07\x61\x63tions\x18\x02 \x03(\t\x12?\n\x0cmatch_fields\x18\x03 \x03(\x0b\x32).custom_protocol.FlowMod.MatchFieldsEntry\x1a\x32\n\x10MatchFieldsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\x90\x01\n\tFlowReply\x12\x0c\n\x04path\x18\x01 \x03(\t\x12\x41\n\x0cmatch_fields\x18\x02 \x03(\x0b\x32+.custom_protocol.FlowReply.MatchFieldsEntry\x1a\x32\n\x10MatchFieldsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"(\n\x08\x45rrorMsg\x12\x0c\n\x04\x63ode\x18\x01 \x01(\x05\x12\x0e\n\x06reason\x18\x02 \x01(\tb\x06proto3'
 )
 
 
@@ -52,15 +52,20 @@ _ENVELOPE_TYPE = _descriptor.EnumDescriptor(
       type=None,
       create_key=_descriptor._internal_create_key),
     _descriptor.EnumValueDescriptor(
-      name='ERROR', index=4, number=4,
+      name='FLOW_REPLY', index=4, number=4,
+      serialized_options=None,
+      type=None,
+      create_key=_descriptor._internal_create_key),
+    _descriptor.EnumValueDescriptor(
+      name='ERROR', index=5, number=5,
       serialized_options=None,
       type=None,
       create_key=_descriptor._internal_create_key),
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=338,
-  serialized_end=419,
+  serialized_start=388,
+  serialized_end=485,
 )
 _sym_db.RegisterEnumDescriptor(_ENVELOPE_TYPE)
 
@@ -109,8 +114,15 @@ _ENVELOPE = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
     _descriptor.FieldDescriptor(
-      name='error', full_name='custom_protocol.Envelope.error', index=5,
+      name='flow_reply', full_name='custom_protocol.Envelope.flow_reply', index=5,
       number=6, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='error', full_name='custom_protocol.Envelope.error', index=6,
+      number=7, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
@@ -134,7 +146,7 @@ _ENVELOPE = _descriptor.Descriptor(
     fields=[]),
   ],
   serialized_start=35,
-  serialized_end=427,
+  serialized_end=493,
 )
 
 
@@ -172,8 +184,8 @@ _HELLO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=429,
-  serialized_end=470,
+  serialized_start=495,
+  serialized_end=536,
 )
 
 
@@ -211,8 +223,8 @@ _TOPOLOGYUPDATE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=472,
-  serialized_end=535,
+  serialized_start=538,
+  serialized_end=601,
 )
 
 
@@ -250,8 +262,8 @@ _FLOWREQUEST_MATCHFIELDSENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=664,
-  serialized_end=714,
+  serialized_start=730,
+  serialized_end=780,
 )
 
 _FLOWREQUEST = _descriptor.Descriptor(
@@ -295,8 +307,8 @@ _FLOWREQUEST = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=538,
-  serialized_end=714,
+  serialized_start=604,
+  serialized_end=780,
 )
 
 
@@ -334,8 +346,8 @@ _FLOWMOD_MATCHFIELDSENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=664,
-  serialized_end=714,
+  serialized_start=730,
+  serialized_end=780,
 )
 
 _FLOWMOD = _descriptor.Descriptor(
@@ -379,8 +391,85 @@ _FLOWMOD = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=717,
-  serialized_end=880,
+  serialized_start=783,
+  serialized_end=946,
+)
+
+
+_FLOWREPLY_MATCHFIELDSENTRY = _descriptor.Descriptor(
+  name='MatchFieldsEntry',
+  full_name='custom_protocol.FlowReply.MatchFieldsEntry',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='key', full_name='custom_protocol.FlowReply.MatchFieldsEntry.key', index=0,
+      number=1, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='value', full_name='custom_protocol.FlowReply.MatchFieldsEntry.value', index=1,
+      number=2, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=b'8\001',
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=730,
+  serialized_end=780,
+)
+
+_FLOWREPLY = _descriptor.Descriptor(
+  name='FlowReply',
+  full_name='custom_protocol.FlowReply',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='path', full_name='custom_protocol.FlowReply.path', index=0,
+      number=1, type=9, cpp_type=9, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='match_fields', full_name='custom_protocol.FlowReply.match_fields', index=1,
+      number=2, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[_FLOWREPLY_MATCHFIELDSENTRY, ],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=949,
+  serialized_end=1093,
 )
 
 
@@ -418,8 +507,8 @@ _ERRORMSG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=882,
-  serialized_end=922,
+  serialized_start=1095,
+  serialized_end=1135,
 )
 
 _ENVELOPE.fields_by_name['type'].enum_type = _ENVELOPE_TYPE
@@ -427,6 +516,7 @@ _ENVELOPE.fields_by_name['hello'].message_type = _HELLO
 _ENVELOPE.fields_by_name['topology_update'].message_type = _TOPOLOGYUPDATE
 _ENVELOPE.fields_by_name['flow_mod'].message_type = _FLOWMOD
 _ENVELOPE.fields_by_name['flow_request'].message_type = _FLOWREQUEST
+_ENVELOPE.fields_by_name['flow_reply'].message_type = _FLOWREPLY
 _ENVELOPE.fields_by_name['error'].message_type = _ERRORMSG
 _ENVELOPE_TYPE.containing_type = _ENVELOPE
 _ENVELOPE.oneofs_by_name['body'].fields.append(
@@ -442,17 +532,23 @@ _ENVELOPE.oneofs_by_name['body'].fields.append(
   _ENVELOPE.fields_by_name['flow_request'])
 _ENVELOPE.fields_by_name['flow_request'].containing_oneof = _ENVELOPE.oneofs_by_name['body']
 _ENVELOPE.oneofs_by_name['body'].fields.append(
+  _ENVELOPE.fields_by_name['flow_reply'])
+_ENVELOPE.fields_by_name['flow_reply'].containing_oneof = _ENVELOPE.oneofs_by_name['body']
+_ENVELOPE.oneofs_by_name['body'].fields.append(
   _ENVELOPE.fields_by_name['error'])
 _ENVELOPE.fields_by_name['error'].containing_oneof = _ENVELOPE.oneofs_by_name['body']
 _FLOWREQUEST_MATCHFIELDSENTRY.containing_type = _FLOWREQUEST
 _FLOWREQUEST.fields_by_name['match_fields'].message_type = _FLOWREQUEST_MATCHFIELDSENTRY
 _FLOWMOD_MATCHFIELDSENTRY.containing_type = _FLOWMOD
 _FLOWMOD.fields_by_name['match_fields'].message_type = _FLOWMOD_MATCHFIELDSENTRY
+_FLOWREPLY_MATCHFIELDSENTRY.containing_type = _FLOWREPLY
+_FLOWREPLY.fields_by_name['match_fields'].message_type = _FLOWREPLY_MATCHFIELDSENTRY
 DESCRIPTOR.message_types_by_name['Envelope'] = _ENVELOPE
 DESCRIPTOR.message_types_by_name['Hello'] = _HELLO
 DESCRIPTOR.message_types_by_name['TopologyUpdate'] = _TOPOLOGYUPDATE
 DESCRIPTOR.message_types_by_name['FlowRequest'] = _FLOWREQUEST
 DESCRIPTOR.message_types_by_name['FlowMod'] = _FLOWMOD
+DESCRIPTOR.message_types_by_name['FlowReply'] = _FLOWREPLY
 DESCRIPTOR.message_types_by_name['ErrorMsg'] = _ERRORMSG
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
@@ -507,6 +603,21 @@ FlowMod = _reflection.GeneratedProtocolMessageType('FlowMod', (_message.Message,
 _sym_db.RegisterMessage(FlowMod)
 _sym_db.RegisterMessage(FlowMod.MatchFieldsEntry)
 
+FlowReply = _reflection.GeneratedProtocolMessageType('FlowReply', (_message.Message,), {
+
+  'MatchFieldsEntry' : _reflection.GeneratedProtocolMessageType('MatchFieldsEntry', (_message.Message,), {
+    'DESCRIPTOR' : _FLOWREPLY_MATCHFIELDSENTRY,
+    '__module__' : 'message_pb2'
+    # @@protoc_insertion_point(class_scope:custom_protocol.FlowReply.MatchFieldsEntry)
+    })
+  ,
+  'DESCRIPTOR' : _FLOWREPLY,
+  '__module__' : 'message_pb2'
+  # @@protoc_insertion_point(class_scope:custom_protocol.FlowReply)
+  })
+_sym_db.RegisterMessage(FlowReply)
+_sym_db.RegisterMessage(FlowReply.MatchFieldsEntry)
+
 ErrorMsg = _reflection.GeneratedProtocolMessageType('ErrorMsg', (_message.Message,), {
   'DESCRIPTOR' : _ERRORMSG,
   '__module__' : 'message_pb2'
@@ -517,4 +628,5 @@ _sym_db.RegisterMessage(ErrorMsg)
 
 _FLOWREQUEST_MATCHFIELDSENTRY._options = None
 _FLOWMOD_MATCHFIELDSENTRY._options = None
+_FLOWREPLY_MATCHFIELDSENTRY._options = None
 # @@protoc_insertion_point(module_scope)

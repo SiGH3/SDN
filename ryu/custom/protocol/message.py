@@ -6,8 +6,14 @@ def encode_envelope(msg_type, msg_body):
 
     if msg_type == message_pb2.Envelope.HELLO:
         envelope.hello.CopyFrom(msg_body)
+    elif msg_type == message_pb2.Envelope.FLOW_MOD:
+        envelope.flow_mod.CopyFrom(msg_body)
     elif msg_type == message_pb2.Envelope.FLOW_REQUEST:
         envelope.flow_request.CopyFrom(msg_body)
+    elif msg_type == message_pb2.Envelope.FLOW_REPLY:
+        envelope.flow_reply.CopyFrom(msg_body)
+    elif msg_type == message_pb2.Envelope.ERROR:
+        envelope.error.CopyFrom(msg_body)
     else:
         raise ValueError("Unknown message type")
 

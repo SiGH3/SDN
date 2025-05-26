@@ -9,7 +9,8 @@ message Envelope {
     TOPOLOGY_UPDATE = 1;
     FLOW_MOD = 2;
     FLOW_REQUEST = 3;
-    ERROR = 4;
+    FLOW_REPLY = 4;  
+    ERROR = 5;
   }
 
   Type type = 1;
@@ -19,7 +20,8 @@ message Envelope {
     TopologyUpdate topology_update = 3;
     FlowMod flow_mod = 4;
     FlowRequest flow_request = 5;
-    ErrorMsg error = 6;
+    FlowReply flow_reply = 6;  
+    ErrorMsg error = 7;
   }
 }
 
@@ -44,6 +46,11 @@ message FlowMod {
   int32 cluster_id = 1;
   repeated string actions = 2; // 简化示例，如 ["output:1"]
   map<string, string> match_fields = 3;
+}
+
+message FlowReply {
+  repeated string path = 1; // 多个交换机节点名称，组成路径
+  map<string, string> match_fields = 2; // 匹配字段，如 ip_dst: 10.0.0.1
 }
 
 message ErrorMsg {
