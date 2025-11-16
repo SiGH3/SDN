@@ -19,7 +19,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   syntax='proto3',
   serialized_options=None,
   create_key=_descriptor._internal_create_key,
-  serialized_pb=b'\n\rmessage.proto\x12\x0f\x63ustom_protocol\"\xca\x03\n\x08\x45nvelope\x12,\n\x04type\x18\x01 \x01(\x0e\x32\x1e.custom_protocol.Envelope.Type\x12\'\n\x05hello\x18\x02 \x01(\x0b\x32\x16.custom_protocol.HelloH\x00\x12:\n\x0ftopology_update\x18\x03 \x01(\x0b\x32\x1f.custom_protocol.TopologyUpdateH\x00\x12,\n\x08\x66low_mod\x18\x04 \x01(\x0b\x32\x18.custom_protocol.FlowModH\x00\x12\x34\n\x0c\x66low_request\x18\x05 \x01(\x0b\x32\x1c.custom_protocol.FlowRequestH\x00\x12\x30\n\nflow_reply\x18\x06 \x01(\x0b\x32\x1a.custom_protocol.FlowReplyH\x00\x12*\n\x05\x65rror\x18\x07 \x01(\x0b\x32\x19.custom_protocol.ErrorMsgH\x00\"a\n\x04Type\x12\t\n\x05HELLO\x10\x00\x12\x13\n\x0fTOPOLOGY_UPDATE\x10\x01\x12\x0c\n\x08\x46LOW_MOD\x10\x02\x12\x10\n\x0c\x46LOW_REQUEST\x10\x03\x12\x0e\n\nFLOW_REPLY\x10\x04\x12\t\n\x05\x45RROR\x10\x05\x42\x06\n\x04\x62ody\")\n\x05Hello\x12\x0f\n\x07node_id\x18\x01 \x01(\t\x12\x0f\n\x07version\x18\x02 \x01(\t\"?\n\x0eTopologyUpdate\x12\x12\n\ncluster_id\x18\x01 \x01(\x05\x12\x19\n\x11\x62oundary_switches\x18\x02 \x03(\t\"\xb0\x01\n\x0b\x46lowRequest\x12\x13\n\x0bsrc_cluster\x18\x01 \x01(\x05\x12\x13\n\x0b\x64st_cluster\x18\x02 \x01(\x05\x12\x43\n\x0cmatch_fields\x18\x03 \x03(\x0b\x32-.custom_protocol.FlowRequest.MatchFieldsEntry\x1a\x32\n\x10MatchFieldsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\xa3\x01\n\x07\x46lowMod\x12\x12\n\ncluster_id\x18\x01 \x01(\x05\x12\x0f\n\x07\x61\x63tions\x18\x02 \x03(\t\x12?\n\x0cmatch_fields\x18\x03 \x03(\x0b\x32).custom_protocol.FlowMod.MatchFieldsEntry\x1a\x32\n\x10MatchFieldsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\x90\x01\n\tFlowReply\x12\x0c\n\x04path\x18\x01 \x03(\t\x12\x41\n\x0cmatch_fields\x18\x02 \x03(\x0b\x32+.custom_protocol.FlowReply.MatchFieldsEntry\x1a\x32\n\x10MatchFieldsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"(\n\x08\x45rrorMsg\x12\x0c\n\x04\x63ode\x18\x01 \x01(\x05\x12\x0e\n\x06reason\x18\x02 \x01(\tb\x06proto3'
+  serialized_pb=b'\n\rmessage.proto\x12\x0f\x63ustom_protocol\")\n\x05Hello\x12\x0f\n\x07node_id\x18\x01 \x01(\t\x12\x0f\n\x07version\x18\x02 \x01(\t\"\xa3\x01\n\x07\x46lowMod\x12\x12\n\ncluster_id\x18\x01 \x01(\x05\x12\x0f\n\x07\x61\x63tions\x18\x02 \x03(\t\x12?\n\x0cmatch_fields\x18\x03 \x03(\x0b\x32).custom_protocol.FlowMod.MatchFieldsEntry\x1a\x32\n\x10MatchFieldsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\xb0\x01\n\x0b\x46lowRequest\x12\x13\n\x0bsrc_cluster\x18\x01 \x01(\x05\x12\x13\n\x0b\x64st_cluster\x18\x02 \x01(\x05\x12\x43\n\x0cmatch_fields\x18\x03 \x03(\x0b\x32-.custom_protocol.FlowRequest.MatchFieldsEntry\x1a\x32\n\x10MatchFieldsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"_\n\x07Segment\x12\x12\n\ncluster_id\x18\x01 \x01(\x05\x12\x16\n\x0eingress_border\x18\x02 \x01(\t\x12\x15\n\regress_border\x18\x03 \x01(\t\x12\x11\n\ttunnel_id\x18\x04 \x01(\t\"\xbc\x01\n\tFlowReply\x12\x0c\n\x04path\x18\x01 \x03(\t\x12\x41\n\x0cmatch_fields\x18\x02 \x03(\x0b\x32+.custom_protocol.FlowReply.MatchFieldsEntry\x12*\n\x08segments\x18\x03 \x03(\x0b\x32\x18.custom_protocol.Segment\x1a\x32\n\x10MatchFieldsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"(\n\x08\x45rrorMsg\x12\x0c\n\x04\x63ode\x18\x01 \x01(\x05\x12\x0e\n\x06reason\x18\x02 \x01(\t\"\x1a\n\tKeepalive\x12\r\n\x05ts_ms\x18\x01 \x01(\x04\"D\n\x0c\x42oundaryPort\x12\x0f\n\x07port_no\x18\x01 \x01(\r\x12\x10\n\x08link_key\x18\x02 \x01(\t\x12\x11\n\tpeer_hint\x18\x03 \x01(\t\"Q\n\x0e\x42oundarySwitch\x12\x11\n\tswitch_id\x18\x01 \x01(\t\x12,\n\x05ports\x18\x02 \x03(\x0b\x32\x1d.custom_protocol.BoundaryPort\"t\n\x0eTopologyUpdate\x12\x12\n\ncluster_id\x18\x01 \x01(\r\x12\x19\n\x11\x62oundary_switches\x18\x02 \x03(\t\x12\x33\n\nboundaries\x18\x03 \x03(\x0b\x32\x1f.custom_protocol.BoundarySwitch\"\xc0\x01\n\x16InterClusterLinkUpdate\x12\x12\n\ncluster_id\x18\x01 \x01(\r\x12>\n\x05links\x18\x02 \x03(\x0b\x32/.custom_protocol.InterClusterLinkUpdate.LinkEnd\x1aR\n\x07LinkEnd\x12\x11\n\tswitch_id\x18\x01 \x01(\t\x12\x0f\n\x07port_no\x18\x02 \x01(\r\x12\x10\n\x08link_key\x18\x03 \x01(\t\x12\x11\n\tpeer_hint\x18\x04 \x01(\t\"\x97\x05\n\x08\x45nvelope\x12,\n\x04type\x18\x01 \x01(\x0e\x32\x1e.custom_protocol.Envelope.Type\x12\x0e\n\x06msg_id\x18\t \x01(\x04\x12\x0f\n\x07\x63orr_id\x18\n \x01(\x04\x12\'\n\x05hello\x18\x02 \x01(\x0b\x32\x16.custom_protocol.HelloH\x00\x12,\n\x08\x66low_mod\x18\x04 \x01(\x0b\x32\x18.custom_protocol.FlowModH\x00\x12\x34\n\x0c\x66low_request\x18\x05 \x01(\x0b\x32\x1c.custom_protocol.FlowRequestH\x00\x12\x30\n\nflow_reply\x18\x06 \x01(\x0b\x32\x1a.custom_protocol.FlowReplyH\x00\x12*\n\x05\x65rror\x18\x07 \x01(\x0b\x32\x19.custom_protocol.ErrorMsgH\x00\x12/\n\tkeepalive\x18\x08 \x01(\x0b\x32\x1a.custom_protocol.KeepaliveH\x00\x12:\n\x0ftopology_update\x18\x10 \x01(\x0b\x32\x1f.custom_protocol.TopologyUpdateH\x00\x12K\n\x18intercluster_link_update\x18\x11 \x01(\x0b\x32\'.custom_protocol.InterClusterLinkUpdateH\x00\"\x8e\x01\n\x04Type\x12\t\n\x05HELLO\x10\x00\x12\x0c\n\x08\x46LOW_MOD\x10\x01\x12\x10\n\x0c\x46LOW_REQUEST\x10\x02\x12\x0e\n\nFLOW_REPLY\x10\x03\x12\t\n\x05\x45RROR\x10\x04\x12\r\n\tKEEPALIVE\x10\x05\x12\x13\n\x0fTOPOLOGY_UPDATE\x10\x06\x12\x1c\n\x18INTERCLUSTER_LINK_UPDATE\x10\x07\x42\x06\n\x04\x62odyb\x06proto3'
 )
 
 
@@ -37,117 +37,47 @@ _ENVELOPE_TYPE = _descriptor.EnumDescriptor(
       type=None,
       create_key=_descriptor._internal_create_key),
     _descriptor.EnumValueDescriptor(
-      name='TOPOLOGY_UPDATE', index=1, number=1,
+      name='FLOW_MOD', index=1, number=1,
       serialized_options=None,
       type=None,
       create_key=_descriptor._internal_create_key),
     _descriptor.EnumValueDescriptor(
-      name='FLOW_MOD', index=2, number=2,
+      name='FLOW_REQUEST', index=2, number=2,
       serialized_options=None,
       type=None,
       create_key=_descriptor._internal_create_key),
     _descriptor.EnumValueDescriptor(
-      name='FLOW_REQUEST', index=3, number=3,
+      name='FLOW_REPLY', index=3, number=3,
       serialized_options=None,
       type=None,
       create_key=_descriptor._internal_create_key),
     _descriptor.EnumValueDescriptor(
-      name='FLOW_REPLY', index=4, number=4,
+      name='ERROR', index=4, number=4,
       serialized_options=None,
       type=None,
       create_key=_descriptor._internal_create_key),
     _descriptor.EnumValueDescriptor(
-      name='ERROR', index=5, number=5,
+      name='KEEPALIVE', index=5, number=5,
+      serialized_options=None,
+      type=None,
+      create_key=_descriptor._internal_create_key),
+    _descriptor.EnumValueDescriptor(
+      name='TOPOLOGY_UPDATE', index=6, number=6,
+      serialized_options=None,
+      type=None,
+      create_key=_descriptor._internal_create_key),
+    _descriptor.EnumValueDescriptor(
+      name='INTERCLUSTER_LINK_UPDATE', index=7, number=7,
       serialized_options=None,
       type=None,
       create_key=_descriptor._internal_create_key),
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=388,
-  serialized_end=485,
+  serialized_start=1760,
+  serialized_end=1902,
 )
 _sym_db.RegisterEnumDescriptor(_ENVELOPE_TYPE)
-
-
-_ENVELOPE = _descriptor.Descriptor(
-  name='Envelope',
-  full_name='custom_protocol.Envelope',
-  filename=None,
-  file=DESCRIPTOR,
-  containing_type=None,
-  create_key=_descriptor._internal_create_key,
-  fields=[
-    _descriptor.FieldDescriptor(
-      name='type', full_name='custom_protocol.Envelope.type', index=0,
-      number=1, type=14, cpp_type=8, label=1,
-      has_default_value=False, default_value=0,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
-    _descriptor.FieldDescriptor(
-      name='hello', full_name='custom_protocol.Envelope.hello', index=1,
-      number=2, type=11, cpp_type=10, label=1,
-      has_default_value=False, default_value=None,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
-    _descriptor.FieldDescriptor(
-      name='topology_update', full_name='custom_protocol.Envelope.topology_update', index=2,
-      number=3, type=11, cpp_type=10, label=1,
-      has_default_value=False, default_value=None,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
-    _descriptor.FieldDescriptor(
-      name='flow_mod', full_name='custom_protocol.Envelope.flow_mod', index=3,
-      number=4, type=11, cpp_type=10, label=1,
-      has_default_value=False, default_value=None,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
-    _descriptor.FieldDescriptor(
-      name='flow_request', full_name='custom_protocol.Envelope.flow_request', index=4,
-      number=5, type=11, cpp_type=10, label=1,
-      has_default_value=False, default_value=None,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
-    _descriptor.FieldDescriptor(
-      name='flow_reply', full_name='custom_protocol.Envelope.flow_reply', index=5,
-      number=6, type=11, cpp_type=10, label=1,
-      has_default_value=False, default_value=None,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
-    _descriptor.FieldDescriptor(
-      name='error', full_name='custom_protocol.Envelope.error', index=6,
-      number=7, type=11, cpp_type=10, label=1,
-      has_default_value=False, default_value=None,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
-  ],
-  extensions=[
-  ],
-  nested_types=[],
-  enum_types=[
-    _ENVELOPE_TYPE,
-  ],
-  serialized_options=None,
-  is_extendable=False,
-  syntax='proto3',
-  extension_ranges=[],
-  oneofs=[
-    _descriptor.OneofDescriptor(
-      name='body', full_name='custom_protocol.Envelope.body',
-      index=0, containing_type=None,
-      create_key=_descriptor._internal_create_key,
-    fields=[]),
-  ],
-  serialized_start=35,
-  serialized_end=493,
-)
 
 
 _HELLO = _descriptor.Descriptor(
@@ -184,131 +114,8 @@ _HELLO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=495,
-  serialized_end=536,
-)
-
-
-_TOPOLOGYUPDATE = _descriptor.Descriptor(
-  name='TopologyUpdate',
-  full_name='custom_protocol.TopologyUpdate',
-  filename=None,
-  file=DESCRIPTOR,
-  containing_type=None,
-  create_key=_descriptor._internal_create_key,
-  fields=[
-    _descriptor.FieldDescriptor(
-      name='cluster_id', full_name='custom_protocol.TopologyUpdate.cluster_id', index=0,
-      number=1, type=5, cpp_type=1, label=1,
-      has_default_value=False, default_value=0,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
-    _descriptor.FieldDescriptor(
-      name='boundary_switches', full_name='custom_protocol.TopologyUpdate.boundary_switches', index=1,
-      number=2, type=9, cpp_type=9, label=3,
-      has_default_value=False, default_value=[],
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
-  ],
-  extensions=[
-  ],
-  nested_types=[],
-  enum_types=[
-  ],
-  serialized_options=None,
-  is_extendable=False,
-  syntax='proto3',
-  extension_ranges=[],
-  oneofs=[
-  ],
-  serialized_start=538,
-  serialized_end=601,
-)
-
-
-_FLOWREQUEST_MATCHFIELDSENTRY = _descriptor.Descriptor(
-  name='MatchFieldsEntry',
-  full_name='custom_protocol.FlowRequest.MatchFieldsEntry',
-  filename=None,
-  file=DESCRIPTOR,
-  containing_type=None,
-  create_key=_descriptor._internal_create_key,
-  fields=[
-    _descriptor.FieldDescriptor(
-      name='key', full_name='custom_protocol.FlowRequest.MatchFieldsEntry.key', index=0,
-      number=1, type=9, cpp_type=9, label=1,
-      has_default_value=False, default_value=b"".decode('utf-8'),
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
-    _descriptor.FieldDescriptor(
-      name='value', full_name='custom_protocol.FlowRequest.MatchFieldsEntry.value', index=1,
-      number=2, type=9, cpp_type=9, label=1,
-      has_default_value=False, default_value=b"".decode('utf-8'),
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
-  ],
-  extensions=[
-  ],
-  nested_types=[],
-  enum_types=[
-  ],
-  serialized_options=b'8\001',
-  is_extendable=False,
-  syntax='proto3',
-  extension_ranges=[],
-  oneofs=[
-  ],
-  serialized_start=730,
-  serialized_end=780,
-)
-
-_FLOWREQUEST = _descriptor.Descriptor(
-  name='FlowRequest',
-  full_name='custom_protocol.FlowRequest',
-  filename=None,
-  file=DESCRIPTOR,
-  containing_type=None,
-  create_key=_descriptor._internal_create_key,
-  fields=[
-    _descriptor.FieldDescriptor(
-      name='src_cluster', full_name='custom_protocol.FlowRequest.src_cluster', index=0,
-      number=1, type=5, cpp_type=1, label=1,
-      has_default_value=False, default_value=0,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
-    _descriptor.FieldDescriptor(
-      name='dst_cluster', full_name='custom_protocol.FlowRequest.dst_cluster', index=1,
-      number=2, type=5, cpp_type=1, label=1,
-      has_default_value=False, default_value=0,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
-    _descriptor.FieldDescriptor(
-      name='match_fields', full_name='custom_protocol.FlowRequest.match_fields', index=2,
-      number=3, type=11, cpp_type=10, label=3,
-      has_default_value=False, default_value=[],
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
-  ],
-  extensions=[
-  ],
-  nested_types=[_FLOWREQUEST_MATCHFIELDSENTRY, ],
-  enum_types=[
-  ],
-  serialized_options=None,
-  is_extendable=False,
-  syntax='proto3',
-  extension_ranges=[],
-  oneofs=[
-  ],
-  serialized_start=604,
-  serialized_end=780,
+  serialized_start=34,
+  serialized_end=75,
 )
 
 
@@ -346,8 +153,8 @@ _FLOWMOD_MATCHFIELDSENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=730,
-  serialized_end=780,
+  serialized_start=191,
+  serialized_end=241,
 )
 
 _FLOWMOD = _descriptor.Descriptor(
@@ -391,8 +198,145 @@ _FLOWMOD = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=783,
-  serialized_end=946,
+  serialized_start=78,
+  serialized_end=241,
+)
+
+
+_FLOWREQUEST_MATCHFIELDSENTRY = _descriptor.Descriptor(
+  name='MatchFieldsEntry',
+  full_name='custom_protocol.FlowRequest.MatchFieldsEntry',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='key', full_name='custom_protocol.FlowRequest.MatchFieldsEntry.key', index=0,
+      number=1, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='value', full_name='custom_protocol.FlowRequest.MatchFieldsEntry.value', index=1,
+      number=2, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=b'8\001',
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=191,
+  serialized_end=241,
+)
+
+_FLOWREQUEST = _descriptor.Descriptor(
+  name='FlowRequest',
+  full_name='custom_protocol.FlowRequest',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='src_cluster', full_name='custom_protocol.FlowRequest.src_cluster', index=0,
+      number=1, type=5, cpp_type=1, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='dst_cluster', full_name='custom_protocol.FlowRequest.dst_cluster', index=1,
+      number=2, type=5, cpp_type=1, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='match_fields', full_name='custom_protocol.FlowRequest.match_fields', index=2,
+      number=3, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[_FLOWREQUEST_MATCHFIELDSENTRY, ],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=244,
+  serialized_end=420,
+)
+
+
+_SEGMENT = _descriptor.Descriptor(
+  name='Segment',
+  full_name='custom_protocol.Segment',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='cluster_id', full_name='custom_protocol.Segment.cluster_id', index=0,
+      number=1, type=5, cpp_type=1, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='ingress_border', full_name='custom_protocol.Segment.ingress_border', index=1,
+      number=2, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='egress_border', full_name='custom_protocol.Segment.egress_border', index=2,
+      number=3, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='tunnel_id', full_name='custom_protocol.Segment.tunnel_id', index=3,
+      number=4, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=422,
+  serialized_end=517,
 )
 
 
@@ -430,8 +374,8 @@ _FLOWREPLY_MATCHFIELDSENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=730,
-  serialized_end=780,
+  serialized_start=191,
+  serialized_end=241,
 )
 
 _FLOWREPLY = _descriptor.Descriptor(
@@ -456,6 +400,13 @@ _FLOWREPLY = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='segments', full_name='custom_protocol.FlowReply.segments', index=2,
+      number=3, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
   ],
   extensions=[
   ],
@@ -468,8 +419,8 @@ _FLOWREPLY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=949,
-  serialized_end=1093,
+  serialized_start=520,
+  serialized_end=708,
 )
 
 
@@ -507,24 +458,396 @@ _ERRORMSG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1095,
-  serialized_end=1135,
+  serialized_start=710,
+  serialized_end=750,
 )
 
+
+_KEEPALIVE = _descriptor.Descriptor(
+  name='Keepalive',
+  full_name='custom_protocol.Keepalive',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='ts_ms', full_name='custom_protocol.Keepalive.ts_ms', index=0,
+      number=1, type=4, cpp_type=4, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=752,
+  serialized_end=778,
+)
+
+
+_BOUNDARYPORT = _descriptor.Descriptor(
+  name='BoundaryPort',
+  full_name='custom_protocol.BoundaryPort',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='port_no', full_name='custom_protocol.BoundaryPort.port_no', index=0,
+      number=1, type=13, cpp_type=3, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='link_key', full_name='custom_protocol.BoundaryPort.link_key', index=1,
+      number=2, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='peer_hint', full_name='custom_protocol.BoundaryPort.peer_hint', index=2,
+      number=3, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=780,
+  serialized_end=848,
+)
+
+
+_BOUNDARYSWITCH = _descriptor.Descriptor(
+  name='BoundarySwitch',
+  full_name='custom_protocol.BoundarySwitch',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='switch_id', full_name='custom_protocol.BoundarySwitch.switch_id', index=0,
+      number=1, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='ports', full_name='custom_protocol.BoundarySwitch.ports', index=1,
+      number=2, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=850,
+  serialized_end=931,
+)
+
+
+_TOPOLOGYUPDATE = _descriptor.Descriptor(
+  name='TopologyUpdate',
+  full_name='custom_protocol.TopologyUpdate',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='cluster_id', full_name='custom_protocol.TopologyUpdate.cluster_id', index=0,
+      number=1, type=13, cpp_type=3, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='boundary_switches', full_name='custom_protocol.TopologyUpdate.boundary_switches', index=1,
+      number=2, type=9, cpp_type=9, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='boundaries', full_name='custom_protocol.TopologyUpdate.boundaries', index=2,
+      number=3, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=933,
+  serialized_end=1049,
+)
+
+
+_INTERCLUSTERLINKUPDATE_LINKEND = _descriptor.Descriptor(
+  name='LinkEnd',
+  full_name='custom_protocol.InterClusterLinkUpdate.LinkEnd',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='switch_id', full_name='custom_protocol.InterClusterLinkUpdate.LinkEnd.switch_id', index=0,
+      number=1, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='port_no', full_name='custom_protocol.InterClusterLinkUpdate.LinkEnd.port_no', index=1,
+      number=2, type=13, cpp_type=3, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='link_key', full_name='custom_protocol.InterClusterLinkUpdate.LinkEnd.link_key', index=2,
+      number=3, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='peer_hint', full_name='custom_protocol.InterClusterLinkUpdate.LinkEnd.peer_hint', index=3,
+      number=4, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=1162,
+  serialized_end=1244,
+)
+
+_INTERCLUSTERLINKUPDATE = _descriptor.Descriptor(
+  name='InterClusterLinkUpdate',
+  full_name='custom_protocol.InterClusterLinkUpdate',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='cluster_id', full_name='custom_protocol.InterClusterLinkUpdate.cluster_id', index=0,
+      number=1, type=13, cpp_type=3, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='links', full_name='custom_protocol.InterClusterLinkUpdate.links', index=1,
+      number=2, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[_INTERCLUSTERLINKUPDATE_LINKEND, ],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=1052,
+  serialized_end=1244,
+)
+
+
+_ENVELOPE = _descriptor.Descriptor(
+  name='Envelope',
+  full_name='custom_protocol.Envelope',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='type', full_name='custom_protocol.Envelope.type', index=0,
+      number=1, type=14, cpp_type=8, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='msg_id', full_name='custom_protocol.Envelope.msg_id', index=1,
+      number=9, type=4, cpp_type=4, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='corr_id', full_name='custom_protocol.Envelope.corr_id', index=2,
+      number=10, type=4, cpp_type=4, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='hello', full_name='custom_protocol.Envelope.hello', index=3,
+      number=2, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='flow_mod', full_name='custom_protocol.Envelope.flow_mod', index=4,
+      number=4, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='flow_request', full_name='custom_protocol.Envelope.flow_request', index=5,
+      number=5, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='flow_reply', full_name='custom_protocol.Envelope.flow_reply', index=6,
+      number=6, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='error', full_name='custom_protocol.Envelope.error', index=7,
+      number=7, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='keepalive', full_name='custom_protocol.Envelope.keepalive', index=8,
+      number=8, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='topology_update', full_name='custom_protocol.Envelope.topology_update', index=9,
+      number=16, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='intercluster_link_update', full_name='custom_protocol.Envelope.intercluster_link_update', index=10,
+      number=17, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+    _ENVELOPE_TYPE,
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+    _descriptor.OneofDescriptor(
+      name='body', full_name='custom_protocol.Envelope.body',
+      index=0, containing_type=None,
+      create_key=_descriptor._internal_create_key,
+    fields=[]),
+  ],
+  serialized_start=1247,
+  serialized_end=1910,
+)
+
+_FLOWMOD_MATCHFIELDSENTRY.containing_type = _FLOWMOD
+_FLOWMOD.fields_by_name['match_fields'].message_type = _FLOWMOD_MATCHFIELDSENTRY
+_FLOWREQUEST_MATCHFIELDSENTRY.containing_type = _FLOWREQUEST
+_FLOWREQUEST.fields_by_name['match_fields'].message_type = _FLOWREQUEST_MATCHFIELDSENTRY
+_FLOWREPLY_MATCHFIELDSENTRY.containing_type = _FLOWREPLY
+_FLOWREPLY.fields_by_name['match_fields'].message_type = _FLOWREPLY_MATCHFIELDSENTRY
+_FLOWREPLY.fields_by_name['segments'].message_type = _SEGMENT
+_BOUNDARYSWITCH.fields_by_name['ports'].message_type = _BOUNDARYPORT
+_TOPOLOGYUPDATE.fields_by_name['boundaries'].message_type = _BOUNDARYSWITCH
+_INTERCLUSTERLINKUPDATE_LINKEND.containing_type = _INTERCLUSTERLINKUPDATE
+_INTERCLUSTERLINKUPDATE.fields_by_name['links'].message_type = _INTERCLUSTERLINKUPDATE_LINKEND
 _ENVELOPE.fields_by_name['type'].enum_type = _ENVELOPE_TYPE
 _ENVELOPE.fields_by_name['hello'].message_type = _HELLO
-_ENVELOPE.fields_by_name['topology_update'].message_type = _TOPOLOGYUPDATE
 _ENVELOPE.fields_by_name['flow_mod'].message_type = _FLOWMOD
 _ENVELOPE.fields_by_name['flow_request'].message_type = _FLOWREQUEST
 _ENVELOPE.fields_by_name['flow_reply'].message_type = _FLOWREPLY
 _ENVELOPE.fields_by_name['error'].message_type = _ERRORMSG
+_ENVELOPE.fields_by_name['keepalive'].message_type = _KEEPALIVE
+_ENVELOPE.fields_by_name['topology_update'].message_type = _TOPOLOGYUPDATE
+_ENVELOPE.fields_by_name['intercluster_link_update'].message_type = _INTERCLUSTERLINKUPDATE
 _ENVELOPE_TYPE.containing_type = _ENVELOPE
 _ENVELOPE.oneofs_by_name['body'].fields.append(
   _ENVELOPE.fields_by_name['hello'])
 _ENVELOPE.fields_by_name['hello'].containing_oneof = _ENVELOPE.oneofs_by_name['body']
-_ENVELOPE.oneofs_by_name['body'].fields.append(
-  _ENVELOPE.fields_by_name['topology_update'])
-_ENVELOPE.fields_by_name['topology_update'].containing_oneof = _ENVELOPE.oneofs_by_name['body']
 _ENVELOPE.oneofs_by_name['body'].fields.append(
   _ENVELOPE.fields_by_name['flow_mod'])
 _ENVELOPE.fields_by_name['flow_mod'].containing_oneof = _ENVELOPE.oneofs_by_name['body']
@@ -537,27 +860,28 @@ _ENVELOPE.fields_by_name['flow_reply'].containing_oneof = _ENVELOPE.oneofs_by_na
 _ENVELOPE.oneofs_by_name['body'].fields.append(
   _ENVELOPE.fields_by_name['error'])
 _ENVELOPE.fields_by_name['error'].containing_oneof = _ENVELOPE.oneofs_by_name['body']
-_FLOWREQUEST_MATCHFIELDSENTRY.containing_type = _FLOWREQUEST
-_FLOWREQUEST.fields_by_name['match_fields'].message_type = _FLOWREQUEST_MATCHFIELDSENTRY
-_FLOWMOD_MATCHFIELDSENTRY.containing_type = _FLOWMOD
-_FLOWMOD.fields_by_name['match_fields'].message_type = _FLOWMOD_MATCHFIELDSENTRY
-_FLOWREPLY_MATCHFIELDSENTRY.containing_type = _FLOWREPLY
-_FLOWREPLY.fields_by_name['match_fields'].message_type = _FLOWREPLY_MATCHFIELDSENTRY
-DESCRIPTOR.message_types_by_name['Envelope'] = _ENVELOPE
+_ENVELOPE.oneofs_by_name['body'].fields.append(
+  _ENVELOPE.fields_by_name['keepalive'])
+_ENVELOPE.fields_by_name['keepalive'].containing_oneof = _ENVELOPE.oneofs_by_name['body']
+_ENVELOPE.oneofs_by_name['body'].fields.append(
+  _ENVELOPE.fields_by_name['topology_update'])
+_ENVELOPE.fields_by_name['topology_update'].containing_oneof = _ENVELOPE.oneofs_by_name['body']
+_ENVELOPE.oneofs_by_name['body'].fields.append(
+  _ENVELOPE.fields_by_name['intercluster_link_update'])
+_ENVELOPE.fields_by_name['intercluster_link_update'].containing_oneof = _ENVELOPE.oneofs_by_name['body']
 DESCRIPTOR.message_types_by_name['Hello'] = _HELLO
-DESCRIPTOR.message_types_by_name['TopologyUpdate'] = _TOPOLOGYUPDATE
-DESCRIPTOR.message_types_by_name['FlowRequest'] = _FLOWREQUEST
 DESCRIPTOR.message_types_by_name['FlowMod'] = _FLOWMOD
+DESCRIPTOR.message_types_by_name['FlowRequest'] = _FLOWREQUEST
+DESCRIPTOR.message_types_by_name['Segment'] = _SEGMENT
 DESCRIPTOR.message_types_by_name['FlowReply'] = _FLOWREPLY
 DESCRIPTOR.message_types_by_name['ErrorMsg'] = _ERRORMSG
+DESCRIPTOR.message_types_by_name['Keepalive'] = _KEEPALIVE
+DESCRIPTOR.message_types_by_name['BoundaryPort'] = _BOUNDARYPORT
+DESCRIPTOR.message_types_by_name['BoundarySwitch'] = _BOUNDARYSWITCH
+DESCRIPTOR.message_types_by_name['TopologyUpdate'] = _TOPOLOGYUPDATE
+DESCRIPTOR.message_types_by_name['InterClusterLinkUpdate'] = _INTERCLUSTERLINKUPDATE
+DESCRIPTOR.message_types_by_name['Envelope'] = _ENVELOPE
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
-
-Envelope = _reflection.GeneratedProtocolMessageType('Envelope', (_message.Message,), {
-  'DESCRIPTOR' : _ENVELOPE,
-  '__module__' : 'message_pb2'
-  # @@protoc_insertion_point(class_scope:custom_protocol.Envelope)
-  })
-_sym_db.RegisterMessage(Envelope)
 
 Hello = _reflection.GeneratedProtocolMessageType('Hello', (_message.Message,), {
   'DESCRIPTOR' : _HELLO,
@@ -566,12 +890,20 @@ Hello = _reflection.GeneratedProtocolMessageType('Hello', (_message.Message,), {
   })
 _sym_db.RegisterMessage(Hello)
 
-TopologyUpdate = _reflection.GeneratedProtocolMessageType('TopologyUpdate', (_message.Message,), {
-  'DESCRIPTOR' : _TOPOLOGYUPDATE,
+FlowMod = _reflection.GeneratedProtocolMessageType('FlowMod', (_message.Message,), {
+
+  'MatchFieldsEntry' : _reflection.GeneratedProtocolMessageType('MatchFieldsEntry', (_message.Message,), {
+    'DESCRIPTOR' : _FLOWMOD_MATCHFIELDSENTRY,
+    '__module__' : 'message_pb2'
+    # @@protoc_insertion_point(class_scope:custom_protocol.FlowMod.MatchFieldsEntry)
+    })
+  ,
+  'DESCRIPTOR' : _FLOWMOD,
   '__module__' : 'message_pb2'
-  # @@protoc_insertion_point(class_scope:custom_protocol.TopologyUpdate)
+  # @@protoc_insertion_point(class_scope:custom_protocol.FlowMod)
   })
-_sym_db.RegisterMessage(TopologyUpdate)
+_sym_db.RegisterMessage(FlowMod)
+_sym_db.RegisterMessage(FlowMod.MatchFieldsEntry)
 
 FlowRequest = _reflection.GeneratedProtocolMessageType('FlowRequest', (_message.Message,), {
 
@@ -588,20 +920,12 @@ FlowRequest = _reflection.GeneratedProtocolMessageType('FlowRequest', (_message.
 _sym_db.RegisterMessage(FlowRequest)
 _sym_db.RegisterMessage(FlowRequest.MatchFieldsEntry)
 
-FlowMod = _reflection.GeneratedProtocolMessageType('FlowMod', (_message.Message,), {
-
-  'MatchFieldsEntry' : _reflection.GeneratedProtocolMessageType('MatchFieldsEntry', (_message.Message,), {
-    'DESCRIPTOR' : _FLOWMOD_MATCHFIELDSENTRY,
-    '__module__' : 'message_pb2'
-    # @@protoc_insertion_point(class_scope:custom_protocol.FlowMod.MatchFieldsEntry)
-    })
-  ,
-  'DESCRIPTOR' : _FLOWMOD,
+Segment = _reflection.GeneratedProtocolMessageType('Segment', (_message.Message,), {
+  'DESCRIPTOR' : _SEGMENT,
   '__module__' : 'message_pb2'
-  # @@protoc_insertion_point(class_scope:custom_protocol.FlowMod)
+  # @@protoc_insertion_point(class_scope:custom_protocol.Segment)
   })
-_sym_db.RegisterMessage(FlowMod)
-_sym_db.RegisterMessage(FlowMod.MatchFieldsEntry)
+_sym_db.RegisterMessage(Segment)
 
 FlowReply = _reflection.GeneratedProtocolMessageType('FlowReply', (_message.Message,), {
 
@@ -625,8 +949,58 @@ ErrorMsg = _reflection.GeneratedProtocolMessageType('ErrorMsg', (_message.Messag
   })
 _sym_db.RegisterMessage(ErrorMsg)
 
+Keepalive = _reflection.GeneratedProtocolMessageType('Keepalive', (_message.Message,), {
+  'DESCRIPTOR' : _KEEPALIVE,
+  '__module__' : 'message_pb2'
+  # @@protoc_insertion_point(class_scope:custom_protocol.Keepalive)
+  })
+_sym_db.RegisterMessage(Keepalive)
 
-_FLOWREQUEST_MATCHFIELDSENTRY._options = None
+BoundaryPort = _reflection.GeneratedProtocolMessageType('BoundaryPort', (_message.Message,), {
+  'DESCRIPTOR' : _BOUNDARYPORT,
+  '__module__' : 'message_pb2'
+  # @@protoc_insertion_point(class_scope:custom_protocol.BoundaryPort)
+  })
+_sym_db.RegisterMessage(BoundaryPort)
+
+BoundarySwitch = _reflection.GeneratedProtocolMessageType('BoundarySwitch', (_message.Message,), {
+  'DESCRIPTOR' : _BOUNDARYSWITCH,
+  '__module__' : 'message_pb2'
+  # @@protoc_insertion_point(class_scope:custom_protocol.BoundarySwitch)
+  })
+_sym_db.RegisterMessage(BoundarySwitch)
+
+TopologyUpdate = _reflection.GeneratedProtocolMessageType('TopologyUpdate', (_message.Message,), {
+  'DESCRIPTOR' : _TOPOLOGYUPDATE,
+  '__module__' : 'message_pb2'
+  # @@protoc_insertion_point(class_scope:custom_protocol.TopologyUpdate)
+  })
+_sym_db.RegisterMessage(TopologyUpdate)
+
+InterClusterLinkUpdate = _reflection.GeneratedProtocolMessageType('InterClusterLinkUpdate', (_message.Message,), {
+
+  'LinkEnd' : _reflection.GeneratedProtocolMessageType('LinkEnd', (_message.Message,), {
+    'DESCRIPTOR' : _INTERCLUSTERLINKUPDATE_LINKEND,
+    '__module__' : 'message_pb2'
+    # @@protoc_insertion_point(class_scope:custom_protocol.InterClusterLinkUpdate.LinkEnd)
+    })
+  ,
+  'DESCRIPTOR' : _INTERCLUSTERLINKUPDATE,
+  '__module__' : 'message_pb2'
+  # @@protoc_insertion_point(class_scope:custom_protocol.InterClusterLinkUpdate)
+  })
+_sym_db.RegisterMessage(InterClusterLinkUpdate)
+_sym_db.RegisterMessage(InterClusterLinkUpdate.LinkEnd)
+
+Envelope = _reflection.GeneratedProtocolMessageType('Envelope', (_message.Message,), {
+  'DESCRIPTOR' : _ENVELOPE,
+  '__module__' : 'message_pb2'
+  # @@protoc_insertion_point(class_scope:custom_protocol.Envelope)
+  })
+_sym_db.RegisterMessage(Envelope)
+
+
 _FLOWMOD_MATCHFIELDSENTRY._options = None
+_FLOWREQUEST_MATCHFIELDSENTRY._options = None
 _FLOWREPLY_MATCHFIELDSENTRY._options = None
 # @@protoc_insertion_point(module_scope)

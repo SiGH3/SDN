@@ -2,58 +2,101 @@ syntax = "proto3";
 
 package custom_protocol;
 
-// 顶层封装消息，包含类型和具体消息体
-message Envelope {
-  enum Type {
-    HELLO = 0;
-    TOPOLOGY_UPDATE = 1;
-    FLOW_MOD = 2;
-    FLOW_REQUEST = 3;
-    FLOW_REPLY = 4;  
-    ERROR = 5;
-  }
-
-  Type type = 1;
-
-  oneof body {
-    Hello hello = 2;
-    TopologyUpdate topology_update = 3;
-    FlowMod flow_mod = 4;
-    FlowRequest flow_request = 5;
-    FlowReply flow_reply = 6;  
-    ErrorMsg error = 7;
-  }
-}
-
-// 各种消息体
+// -------------------- 消息体定义 --------------------
 message Hello {
   string node_id = 1;
   string version = 2;
 }
 
-message TopologyUpdate {
+message FlowMod {
   int32 cluster_id = 1;
-  repeated string boundary_switches = 2;
+  repeated string actions = 2;
+  map<string, string> match_fields = 3;
 }
 
 message FlowRequest {
   int32 src_cluster = 1;
   int32 dst_cluster = 2;
-  map<string, string> match_fields = 3; // 如 {"ip_dst": "10.0.1.1"}
-}
-
-message FlowMod {
-  int32 cluster_id = 1;
-  repeated string actions = 2; // 简化示例，如 ["output:1"]
   map<string, string> match_fields = 3;
 }
 
+message Segment {
+  int32 cluster_id = 1;
+  string ingress_border = 2;
+  string egress_border = 3;
+  string tunnel_id = 4;
+}
+
 message FlowReply {
-  repeated string path = 1; // 多个交换机节点名称，组成路径
-  map<string, string> match_fields = 2; // 匹配字段，如 ip_dst: 10.0.0.1
+  repeated string path = 1;
+  map<string, string> match_fields = 2;
+  repeated Segment segments = 3;
 }
 
 message ErrorMsg {
   int32 code = 1;
   string reason = 2;
+}
+
+message Keepalive {
+  uint64 ts_ms = 1;
+}
+
+message BoundaryPort {
+  uint32 port_no = 1;
+  string link_key = 2;
+  string peer_hint = 3;
+}
+
+message BoundarySwitch {
+  string switch_id = 1;
+  repeated BoundaryPort ports = 2;
+}
+
+message TopologyUpdate {
+  uint32 cluster_id = 1;
+  repeated string boundary_switches = 2;   // 兼容旧字段
+  repeated BoundarySwitch boundaries = 3;  // 结构化字段
+}
+
+message InterClusterLinkUpdate {
+  uint32 cluster_id = 1;
+  message LinkEnd {
+    string switch_id = 1;
+    uint32 port_no = 2;
+    string link_key = 3;
+    string peer_hint = 4;
+  }
+  repeated LinkEnd links = 2;
+}
+
+// -------------------- 顶层封装 --------------------
+message Envelope {
+  enum Type {
+    HELLO = 0;
+    FLOW_MOD = 1;
+    FLOW_REQUEST = 2;
+    FLOW_REPLY = 3;
+    ERROR = 4;
+    KEEPALIVE = 5;
+    TOPOLOGY_UPDATE = 6;
+    INTERCLUSTER_LINK_UPDATE = 7;
+  }
+
+  Type type = 1;
+
+  // 请求-应答关联
+  uint64 msg_id = 9;
+  uint64 corr_id = 10;
+
+  oneof body {
+    Hello hello = 2;
+    FlowMod flow_mod = 4;
+    FlowRequest flow_request = 5;
+    FlowReply flow_reply = 6;
+    ErrorMsg error = 7;
+    Keepalive keepalive = 8;
+    TopologyUpdate topology_update = 16;
+    InterClusterLinkUpdate intercluster_link_update = 17;
+  }
 }
