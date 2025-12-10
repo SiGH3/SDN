@@ -19,7 +19,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   syntax='proto3',
   serialized_options=None,
   create_key=_descriptor._internal_create_key,
-  serialized_pb=b'\n\rmessage.proto\x12\x0f\x63ustom_protocol\")\n\x05Hello\x12\x0f\n\x07node_id\x18\x01 \x01(\t\x12\x0f\n\x07version\x18\x02 \x01(\t\"\xa3\x01\n\x07\x46lowMod\x12\x12\n\ncluster_id\x18\x01 \x01(\x05\x12\x0f\n\x07\x61\x63tions\x18\x02 \x03(\t\x12?\n\x0cmatch_fields\x18\x03 \x03(\x0b\x32).custom_protocol.FlowMod.MatchFieldsEntry\x1a\x32\n\x10MatchFieldsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\xb0\x01\n\x0b\x46lowRequest\x12\x13\n\x0bsrc_cluster\x18\x01 \x01(\x05\x12\x13\n\x0b\x64st_cluster\x18\x02 \x01(\x05\x12\x43\n\x0cmatch_fields\x18\x03 \x03(\x0b\x32-.custom_protocol.FlowRequest.MatchFieldsEntry\x1a\x32\n\x10MatchFieldsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"_\n\x07Segment\x12\x12\n\ncluster_id\x18\x01 \x01(\x05\x12\x16\n\x0eingress_border\x18\x02 \x01(\t\x12\x15\n\regress_border\x18\x03 \x01(\t\x12\x11\n\ttunnel_id\x18\x04 \x01(\t\"\xbc\x01\n\tFlowReply\x12\x0c\n\x04path\x18\x01 \x03(\t\x12\x41\n\x0cmatch_fields\x18\x02 \x03(\x0b\x32+.custom_protocol.FlowReply.MatchFieldsEntry\x12*\n\x08segments\x18\x03 \x03(\x0b\x32\x18.custom_protocol.Segment\x1a\x32\n\x10MatchFieldsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"(\n\x08\x45rrorMsg\x12\x0c\n\x04\x63ode\x18\x01 \x01(\x05\x12\x0e\n\x06reason\x18\x02 \x01(\t\"\x1a\n\tKeepalive\x12\r\n\x05ts_ms\x18\x01 \x01(\x04\"D\n\x0c\x42oundaryPort\x12\x0f\n\x07port_no\x18\x01 \x01(\r\x12\x10\n\x08link_key\x18\x02 \x01(\t\x12\x11\n\tpeer_hint\x18\x03 \x01(\t\"Q\n\x0e\x42oundarySwitch\x12\x11\n\tswitch_id\x18\x01 \x01(\t\x12,\n\x05ports\x18\x02 \x03(\x0b\x32\x1d.custom_protocol.BoundaryPort\"t\n\x0eTopologyUpdate\x12\x12\n\ncluster_id\x18\x01 \x01(\r\x12\x19\n\x11\x62oundary_switches\x18\x02 \x03(\t\x12\x33\n\nboundaries\x18\x03 \x03(\x0b\x32\x1f.custom_protocol.BoundarySwitch\"\xc0\x01\n\x16InterClusterLinkUpdate\x12\x12\n\ncluster_id\x18\x01 \x01(\r\x12>\n\x05links\x18\x02 \x03(\x0b\x32/.custom_protocol.InterClusterLinkUpdate.LinkEnd\x1aR\n\x07LinkEnd\x12\x11\n\tswitch_id\x18\x01 \x01(\t\x12\x0f\n\x07port_no\x18\x02 \x01(\r\x12\x10\n\x08link_key\x18\x03 \x01(\t\x12\x11\n\tpeer_hint\x18\x04 \x01(\t\"\x97\x05\n\x08\x45nvelope\x12,\n\x04type\x18\x01 \x01(\x0e\x32\x1e.custom_protocol.Envelope.Type\x12\x0e\n\x06msg_id\x18\t \x01(\x04\x12\x0f\n\x07\x63orr_id\x18\n \x01(\x04\x12\'\n\x05hello\x18\x02 \x01(\x0b\x32\x16.custom_protocol.HelloH\x00\x12,\n\x08\x66low_mod\x18\x04 \x01(\x0b\x32\x18.custom_protocol.FlowModH\x00\x12\x34\n\x0c\x66low_request\x18\x05 \x01(\x0b\x32\x1c.custom_protocol.FlowRequestH\x00\x12\x30\n\nflow_reply\x18\x06 \x01(\x0b\x32\x1a.custom_protocol.FlowReplyH\x00\x12*\n\x05\x65rror\x18\x07 \x01(\x0b\x32\x19.custom_protocol.ErrorMsgH\x00\x12/\n\tkeepalive\x18\x08 \x01(\x0b\x32\x1a.custom_protocol.KeepaliveH\x00\x12:\n\x0ftopology_update\x18\x10 \x01(\x0b\x32\x1f.custom_protocol.TopologyUpdateH\x00\x12K\n\x18intercluster_link_update\x18\x11 \x01(\x0b\x32\'.custom_protocol.InterClusterLinkUpdateH\x00\"\x8e\x01\n\x04Type\x12\t\n\x05HELLO\x10\x00\x12\x0c\n\x08\x46LOW_MOD\x10\x01\x12\x10\n\x0c\x46LOW_REQUEST\x10\x02\x12\x0e\n\nFLOW_REPLY\x10\x03\x12\t\n\x05\x45RROR\x10\x04\x12\r\n\tKEEPALIVE\x10\x05\x12\x13\n\x0fTOPOLOGY_UPDATE\x10\x06\x12\x1c\n\x18INTERCLUSTER_LINK_UPDATE\x10\x07\x42\x06\n\x04\x62odyb\x06proto3'
+  serialized_pb=b'\n\rmessage.proto\x12\x0f\x63ustom_protocol\")\n\x05Hello\x12\x0f\n\x07node_id\x18\x01 \x01(\t\x12\x0f\n\x07version\x18\x02 \x01(\t\"\xa3\x01\n\x07\x46lowMod\x12\x12\n\ncluster_id\x18\x01 \x01(\x05\x12\x0f\n\x07\x61\x63tions\x18\x02 \x03(\t\x12?\n\x0cmatch_fields\x18\x03 \x03(\x0b\x32).custom_protocol.FlowMod.MatchFieldsEntry\x1a\x32\n\x10MatchFieldsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\xb0\x01\n\x0b\x46lowRequest\x12\x13\n\x0bsrc_cluster\x18\x01 \x01(\x05\x12\x13\n\x0b\x64st_cluster\x18\x02 \x01(\x05\x12\x43\n\x0cmatch_fields\x18\x03 \x03(\x0b\x32-.custom_protocol.FlowRequest.MatchFieldsEntry\x1a\x32\n\x10MatchFieldsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"_\n\x07Segment\x12\x12\n\ncluster_id\x18\x01 \x01(\x05\x12\x16\n\x0eingress_border\x18\x02 \x01(\t\x12\x15\n\regress_border\x18\x03 \x01(\t\x12\x11\n\ttunnel_id\x18\x04 \x01(\t\"\xbc\x01\n\tFlowReply\x12\x0c\n\x04path\x18\x01 \x03(\t\x12\x41\n\x0cmatch_fields\x18\x02 \x03(\x0b\x32+.custom_protocol.FlowReply.MatchFieldsEntry\x12*\n\x08segments\x18\x03 \x03(\x0b\x32\x18.custom_protocol.Segment\x1a\x32\n\x10MatchFieldsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"(\n\x08\x45rrorMsg\x12\x0c\n\x04\x63ode\x18\x01 \x01(\x05\x12\x0e\n\x06reason\x18\x02 \x01(\t\"\x1a\n\tKeepalive\x12\r\n\x05ts_ms\x18\x01 \x01(\x04\"D\n\x0c\x42oundaryPort\x12\x0f\n\x07port_no\x18\x01 \x01(\r\x12\x10\n\x08link_key\x18\x02 \x01(\t\x12\x11\n\tpeer_hint\x18\x03 \x01(\t\"Q\n\x0e\x42oundarySwitch\x12\x11\n\tswitch_id\x18\x01 \x01(\t\x12,\n\x05ports\x18\x02 \x03(\x0b\x32\x1d.custom_protocol.BoundaryPort\"t\n\x0eTopologyUpdate\x12\x12\n\ncluster_id\x18\x01 \x01(\r\x12\x19\n\x11\x62oundary_switches\x18\x02 \x03(\t\x12\x33\n\nboundaries\x18\x03 \x03(\x0b\x32\x1f.custom_protocol.BoundarySwitch\"\xc0\x01\n\x16InterClusterLinkUpdate\x12\x12\n\ncluster_id\x18\x01 \x01(\r\x12>\n\x05links\x18\x02 \x03(\x0b\x32/.custom_protocol.InterClusterLinkUpdate.LinkEnd\x1aR\n\x07LinkEnd\x12\x11\n\tswitch_id\x18\x01 \x01(\t\x12\x0f\n\x07port_no\x18\x02 \x01(\r\x12\x10\n\x08link_key\x18\x03 \x01(\t\x12\x11\n\tpeer_hint\x18\x04 \x01(\t\"\xe2\x01\n\x17InterClusterLinkMetrics\x12\x12\n\ncluster_id\x18\x01 \x01(\r\x12\x45\n\x07metrics\x18\x02 \x03(\x0b\x32\x34.custom_protocol.InterClusterLinkMetrics.MetricEntry\x1al\n\x0bMetricEntry\x12\x10\n\x08link_key\x18\x01 \x01(\t\x12\x12\n\nlatency_ms\x18\x02 \x01(\x01\x12\x0c\n\x04load\x18\x03 \x01(\x01\x12\x12\n\nloss_ratio\x18\x04 \x01(\x01\x12\x15\n\ravail_bw_mbps\x18\x05 \x01(\x01\"\x85\x06\n\x08\x45nvelope\x12,\n\x04type\x18\x01 \x01(\x0e\x32\x1e.custom_protocol.Envelope.Type\x12\x0e\n\x06msg_id\x18\t \x01(\x04\x12\x0f\n\x07\x63orr_id\x18\n \x01(\x04\x12\'\n\x05hello\x18\x02 \x01(\x0b\x32\x16.custom_protocol.HelloH\x00\x12,\n\x08\x66low_mod\x18\x04 \x01(\x0b\x32\x18.custom_protocol.FlowModH\x00\x12\x34\n\x0c\x66low_request\x18\x05 \x01(\x0b\x32\x1c.custom_protocol.FlowRequestH\x00\x12\x30\n\nflow_reply\x18\x06 \x01(\x0b\x32\x1a.custom_protocol.FlowReplyH\x00\x12*\n\x05\x65rror\x18\x07 \x01(\x0b\x32\x19.custom_protocol.ErrorMsgH\x00\x12/\n\tkeepalive\x18\x08 \x01(\x0b\x32\x1a.custom_protocol.KeepaliveH\x00\x12:\n\x0ftopology_update\x18\x10 \x01(\x0b\x32\x1f.custom_protocol.TopologyUpdateH\x00\x12K\n\x18intercluster_link_update\x18\x11 \x01(\x0b\x32\'.custom_protocol.InterClusterLinkUpdateH\x00\x12M\n\x19intercluster_link_metrics\x18\x12 \x01(\x0b\x32(.custom_protocol.InterClusterLinkMetricsH\x00\"\xad\x01\n\x04Type\x12\t\n\x05HELLO\x10\x00\x12\x0c\n\x08\x46LOW_MOD\x10\x01\x12\x10\n\x0c\x46LOW_REQUEST\x10\x02\x12\x0e\n\nFLOW_REPLY\x10\x03\x12\t\n\x05\x45RROR\x10\x04\x12\r\n\tKEEPALIVE\x10\x05\x12\x13\n\x0fTOPOLOGY_UPDATE\x10\x06\x12\x1c\n\x18INTERCLUSTER_LINK_UPDATE\x10\x07\x12\x1d\n\x19INTERCLUSTER_LINK_METRICS\x10\x08\x42\x06\n\x04\x62odyb\x06proto3'
 )
 
 
@@ -71,11 +71,16 @@ _ENVELOPE_TYPE = _descriptor.EnumDescriptor(
       serialized_options=None,
       type=None,
       create_key=_descriptor._internal_create_key),
+    _descriptor.EnumValueDescriptor(
+      name='INTERCLUSTER_LINK_METRICS', index=8, number=8,
+      serialized_options=None,
+      type=None,
+      create_key=_descriptor._internal_create_key),
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=1760,
-  serialized_end=1902,
+  serialized_start=2068,
+  serialized_end=2241,
 )
 _sym_db.RegisterEnumDescriptor(_ENVELOPE_TYPE)
 
@@ -717,6 +722,104 @@ _INTERCLUSTERLINKUPDATE = _descriptor.Descriptor(
 )
 
 
+_INTERCLUSTERLINKMETRICS_METRICENTRY = _descriptor.Descriptor(
+  name='MetricEntry',
+  full_name='custom_protocol.InterClusterLinkMetrics.MetricEntry',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='link_key', full_name='custom_protocol.InterClusterLinkMetrics.MetricEntry.link_key', index=0,
+      number=1, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='latency_ms', full_name='custom_protocol.InterClusterLinkMetrics.MetricEntry.latency_ms', index=1,
+      number=2, type=1, cpp_type=5, label=1,
+      has_default_value=False, default_value=float(0),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='load', full_name='custom_protocol.InterClusterLinkMetrics.MetricEntry.load', index=2,
+      number=3, type=1, cpp_type=5, label=1,
+      has_default_value=False, default_value=float(0),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='loss_ratio', full_name='custom_protocol.InterClusterLinkMetrics.MetricEntry.loss_ratio', index=3,
+      number=4, type=1, cpp_type=5, label=1,
+      has_default_value=False, default_value=float(0),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='avail_bw_mbps', full_name='custom_protocol.InterClusterLinkMetrics.MetricEntry.avail_bw_mbps', index=4,
+      number=5, type=1, cpp_type=5, label=1,
+      has_default_value=False, default_value=float(0),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=1365,
+  serialized_end=1473,
+)
+
+_INTERCLUSTERLINKMETRICS = _descriptor.Descriptor(
+  name='InterClusterLinkMetrics',
+  full_name='custom_protocol.InterClusterLinkMetrics',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='cluster_id', full_name='custom_protocol.InterClusterLinkMetrics.cluster_id', index=0,
+      number=1, type=13, cpp_type=3, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='metrics', full_name='custom_protocol.InterClusterLinkMetrics.metrics', index=1,
+      number=2, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[_INTERCLUSTERLINKMETRICS_METRICENTRY, ],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=1247,
+  serialized_end=1473,
+)
+
+
 _ENVELOPE = _descriptor.Descriptor(
   name='Envelope',
   full_name='custom_protocol.Envelope',
@@ -802,6 +905,13 @@ _ENVELOPE = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='intercluster_link_metrics', full_name='custom_protocol.Envelope.intercluster_link_metrics', index=11,
+      number=18, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
   ],
   extensions=[
   ],
@@ -820,8 +930,8 @@ _ENVELOPE = _descriptor.Descriptor(
       create_key=_descriptor._internal_create_key,
     fields=[]),
   ],
-  serialized_start=1247,
-  serialized_end=1910,
+  serialized_start=1476,
+  serialized_end=2249,
 )
 
 _FLOWMOD_MATCHFIELDSENTRY.containing_type = _FLOWMOD
@@ -835,6 +945,8 @@ _BOUNDARYSWITCH.fields_by_name['ports'].message_type = _BOUNDARYPORT
 _TOPOLOGYUPDATE.fields_by_name['boundaries'].message_type = _BOUNDARYSWITCH
 _INTERCLUSTERLINKUPDATE_LINKEND.containing_type = _INTERCLUSTERLINKUPDATE
 _INTERCLUSTERLINKUPDATE.fields_by_name['links'].message_type = _INTERCLUSTERLINKUPDATE_LINKEND
+_INTERCLUSTERLINKMETRICS_METRICENTRY.containing_type = _INTERCLUSTERLINKMETRICS
+_INTERCLUSTERLINKMETRICS.fields_by_name['metrics'].message_type = _INTERCLUSTERLINKMETRICS_METRICENTRY
 _ENVELOPE.fields_by_name['type'].enum_type = _ENVELOPE_TYPE
 _ENVELOPE.fields_by_name['hello'].message_type = _HELLO
 _ENVELOPE.fields_by_name['flow_mod'].message_type = _FLOWMOD
@@ -844,6 +956,7 @@ _ENVELOPE.fields_by_name['error'].message_type = _ERRORMSG
 _ENVELOPE.fields_by_name['keepalive'].message_type = _KEEPALIVE
 _ENVELOPE.fields_by_name['topology_update'].message_type = _TOPOLOGYUPDATE
 _ENVELOPE.fields_by_name['intercluster_link_update'].message_type = _INTERCLUSTERLINKUPDATE
+_ENVELOPE.fields_by_name['intercluster_link_metrics'].message_type = _INTERCLUSTERLINKMETRICS
 _ENVELOPE_TYPE.containing_type = _ENVELOPE
 _ENVELOPE.oneofs_by_name['body'].fields.append(
   _ENVELOPE.fields_by_name['hello'])
@@ -869,6 +982,9 @@ _ENVELOPE.fields_by_name['topology_update'].containing_oneof = _ENVELOPE.oneofs_
 _ENVELOPE.oneofs_by_name['body'].fields.append(
   _ENVELOPE.fields_by_name['intercluster_link_update'])
 _ENVELOPE.fields_by_name['intercluster_link_update'].containing_oneof = _ENVELOPE.oneofs_by_name['body']
+_ENVELOPE.oneofs_by_name['body'].fields.append(
+  _ENVELOPE.fields_by_name['intercluster_link_metrics'])
+_ENVELOPE.fields_by_name['intercluster_link_metrics'].containing_oneof = _ENVELOPE.oneofs_by_name['body']
 DESCRIPTOR.message_types_by_name['Hello'] = _HELLO
 DESCRIPTOR.message_types_by_name['FlowMod'] = _FLOWMOD
 DESCRIPTOR.message_types_by_name['FlowRequest'] = _FLOWREQUEST
@@ -880,6 +996,7 @@ DESCRIPTOR.message_types_by_name['BoundaryPort'] = _BOUNDARYPORT
 DESCRIPTOR.message_types_by_name['BoundarySwitch'] = _BOUNDARYSWITCH
 DESCRIPTOR.message_types_by_name['TopologyUpdate'] = _TOPOLOGYUPDATE
 DESCRIPTOR.message_types_by_name['InterClusterLinkUpdate'] = _INTERCLUSTERLINKUPDATE
+DESCRIPTOR.message_types_by_name['InterClusterLinkMetrics'] = _INTERCLUSTERLINKMETRICS
 DESCRIPTOR.message_types_by_name['Envelope'] = _ENVELOPE
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
@@ -991,6 +1108,21 @@ InterClusterLinkUpdate = _reflection.GeneratedProtocolMessageType('InterClusterL
   })
 _sym_db.RegisterMessage(InterClusterLinkUpdate)
 _sym_db.RegisterMessage(InterClusterLinkUpdate.LinkEnd)
+
+InterClusterLinkMetrics = _reflection.GeneratedProtocolMessageType('InterClusterLinkMetrics', (_message.Message,), {
+
+  'MetricEntry' : _reflection.GeneratedProtocolMessageType('MetricEntry', (_message.Message,), {
+    'DESCRIPTOR' : _INTERCLUSTERLINKMETRICS_METRICENTRY,
+    '__module__' : 'message_pb2'
+    # @@protoc_insertion_point(class_scope:custom_protocol.InterClusterLinkMetrics.MetricEntry)
+    })
+  ,
+  'DESCRIPTOR' : _INTERCLUSTERLINKMETRICS,
+  '__module__' : 'message_pb2'
+  # @@protoc_insertion_point(class_scope:custom_protocol.InterClusterLinkMetrics)
+  })
+_sym_db.RegisterMessage(InterClusterLinkMetrics)
+_sym_db.RegisterMessage(InterClusterLinkMetrics.MetricEntry)
 
 Envelope = _reflection.GeneratedProtocolMessageType('Envelope', (_message.Message,), {
   'DESCRIPTOR' : _ENVELOPE,

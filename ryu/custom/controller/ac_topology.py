@@ -53,6 +53,51 @@ class ClusterGraph:
         edges_sorted = sorted(self.cluster_edges)
         return edges_sorted, changed
 
+    def add_cluster(self, cid: int):
+        """确保集群节点存在（幺等）。"""
+        cid = int(cid)
+        # 访问 cluster_boundaries 会自动创建默认集合
+        _ = self.cluster_boundaries[cid]
+        return True
+
+    def add_edge(self, a: int, b: int, link_key: str = None):
+        """显式向 graph 中添加一条边（a,b）。"""
+        a = int(a); b = int(b)
+        if a == b:
+            return False
+        e = (min(a, b), max(a, b))
+        if e in self.cluster_edges:
+            return False
+        self.cluster_edges.add(e)
+        # 初始化度量（若已有 link_key 可以更具体）
+        self.edge_metrics.setdefault(e, {"weight": 1.0, "latency": 1.0, "load": 0.0})
+        # 将 link_key 映射到 link_index 以便回溯（非必须）
+        if link_key:
+            # 保证 link_index 有该 key 并记下端点（用于后续基于 link_key 的查询）
+            if link_key not in self.link_index:
+                self.link_index[link_key] = []
+            # 不刻意添加 cluster->switch mapping 这里仅保证存在
+        return True
+
+    def update_edge_metric(self, a: int, b: int, latency: float = None, load: float = None, weight: float = None):
+        a = int(a); b = int(b)
+        e = (min(a, b), max(a, b))
+        m = self.edge_metrics.setdefault(e, {"weight": 1.0, "latency": 1.0, "load": 0.0})
+        if latency is not None:
+            m["latency"] = float(latency)
+        if load is not None:
+            m["load"] = float(load)
+        if weight is not None:
+            m["weight"] = float(weight)
+        self.edge_metrics[e] = m
+        return True
+
+    def calculate_path(self, src: int, dst: int, policy: dict = None):
+        """兼容旧接口：返回 best_path 的结果。"""
+        if policy is None:
+            policy = ROUTING_POLICY
+        return self.best_path(src, dst, policy)
+    
     def enumerate_paths(self, src: int, dst: int, max_hops: int, max_paths: int):
         if src == dst:
             return [[src]]

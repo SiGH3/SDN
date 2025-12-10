@@ -70,6 +70,18 @@ message InterClusterLinkUpdate {
   repeated LinkEnd links = 2;
 }
 
+message InterClusterLinkMetrics {
+  uint32 cluster_id = 1;
+  message MetricEntry {
+    string link_key = 1;
+    double latency_ms = 2;
+    double load = 3;
+    double loss_ratio = 4;
+    double avail_bw_mbps = 5;
+  }
+  repeated MetricEntry metrics = 2;
+}
+
 // -------------------- 顶层封装 --------------------
 message Envelope {
   enum Type {
@@ -81,6 +93,7 @@ message Envelope {
     KEEPALIVE = 5;
     TOPOLOGY_UPDATE = 6;
     INTERCLUSTER_LINK_UPDATE = 7;
+    INTERCLUSTER_LINK_METRICS = 8; // NEW
   }
 
   Type type = 1;
@@ -98,5 +111,6 @@ message Envelope {
     Keepalive keepalive = 8;
     TopologyUpdate topology_update = 16;
     InterClusterLinkUpdate intercluster_link_update = 17;
+    InterClusterLinkMetrics intercluster_link_metrics = 18; // NEW
   }
 }
