@@ -13,6 +13,7 @@ from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER, DEAD_DISP
 from ryu.ofproto import ofproto_v1_3
 from ryu.lib.packet import packet, ethernet, lldp, ether_types
 from ryu.lib.packet import packet as pktlib  # 修复: 补充 pktlib 用于构造 LLDP 帧
+import time  # 新增
 from ryu.lib import hub
 from collections import defaultdict
 
@@ -38,7 +39,9 @@ class MySimpleSwitch13(app_manager.RyuApp):
 
         self._local_dpids = set()
         self._dpid_name = {}   # dpid -> human name
-        self._link_seen = set()
+        # self._link_seen = set()  # 移除永久去重
+        self._link_last_sent = {}  # 新增：link_key -> last_ts
+        self._lk_resend_sec = float(os.getenv("LINK_REANNOUNCE_SEC", "10"))  # 重发周期秒
 
         self._send_q = queue.Queue()
         hub.spawn(self._ac_pump_loop)
@@ -122,16 +125,7 @@ class MySimpleSwitch13(app_manager.RyuApp):
         pkt = packet.Packet(msg.data)
         eth = pkt.get_protocol(ethernet.ethernet)
 
-        # 调试打印
-        pkt_lldp = pkt.get_protocol(lldp.lldp)
-        self.logger.info(f"[DEBUG] PACKETIN dpid={dp.id} in_port={msg.match.get('in_port')} pkt_len={len(msg.data)}")
-        if pkt_lldp:
-            for tlv in pkt_lldp.tlvs:
-                try:
-                    self.logger.info(f"[DEBUG] TLV type={type(tlv).__name__} repr={tlv}")
-                except Exception:
-                    pass
-
+        # 仅处理 LLDP
         if not eth or eth.ethertype != ether_types.ETH_TYPE_LLDP:
             return
         pkt_lldp = pkt.get_protocol(lldp.lldp)
@@ -191,15 +185,22 @@ class MySimpleSwitch13(app_manager.RyuApp):
             return
 
         lk = self._make_link_key(dp.id, local_port, peer_dpid, peer_port)
-        if lk in self._link_seen:
-            self.logger.info(f"[CC] duplicate link_key, skip: {lk}")
+
+        if lk in self._session_seen:
             return
-        self._link_seen.add(lk)
+        
+        self._session_seen.add(lk)
 
-        # 上报前加一条明确日志（便于确认执行到了）
+        # 改为时间窗去重：间隔内不重复上报，超时则重发
+        now = time.time()
+        last = self._link_last_sent.get(lk, 0)
+        if now - last < self._lk_resend_sec:
+            self.logger.debug(f"[CC] suppress resend within {self._lk_resend_sec}s: {lk}")
+            return
+        self._link_last_sent[lk] = now
+
+        # 上报
         self.logger.info(f"[CC] WILL REPORT: local={local_name}:{local_port} peer_dpid={peer_dpid}:{peer_port} lk={lk}")
-
-        # 双端上报：本端 + 对端 stub（方便 AC 聚合）
         upd = message_pb2.InterClusterLinkUpdate()
         upd.cluster_id = self.cluster_id
 
@@ -234,6 +235,7 @@ class MySimpleSwitch13(app_manager.RyuApp):
                 sock = network.create_client_socket(self.ac_host, self.ac_port)
             except Exception:
                 hub.sleep(backoff); backoff = min(5, backoff * 2)
+        self._session_seen = set()
 
         # HELLO 直接发送，保证时序
         hello = message_pb2.Hello()
