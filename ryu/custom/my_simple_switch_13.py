@@ -22,13 +22,12 @@ from ryu.custom.utils import network
 
 class MySimpleSwitch13(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
-
     def __init__(self, *args, **kwargs):
         super(MySimpleSwitch13, self).__init__(*args, **kwargs)
-        import os, queue
+        import os  # 移除标准 queue
         self.cluster_id = int(os.getenv("CLUSTER_ID", "1"))
-        # 回退：使用手动 BOUNDARY_SWITCHES
-        self.boundary_switches = [x for x in os.getenv("BOUNDARY_SWITCHES", "").split(",") if x]
+        # self.boundary_switches = [x for x in os.getenv("BOUNDARY_SWITCHES", "").split(",") if x]
+        self.boundary_switches = []
         self.dst_clusters = [int(x) for x in os.getenv("DST_CLUSTERS", "").split(",") if x]
         self.ac_host = os.getenv("AC_HOST", "127.0.0.1")
         self.ac_port = int(os.getenv("AC_PORT", "10000"))
@@ -43,12 +42,14 @@ class MySimpleSwitch13(app_manager.RyuApp):
         self._link_last_sent = {}  # 新增：link_key -> last_ts
         self._lk_resend_sec = float(os.getenv("LINK_REANNOUNCE_SEC", "10"))  # 重发周期秒
 
-        self._send_q = queue.Queue()
+        self._send_q = hub.Queue()      # 使用 eventlet 友好的队列
         hub.spawn(self._ac_pump_loop)
 
         self._datapaths = {}              # dpid -> datapath
         self._ports = defaultdict(list)   # dpid -> [port_no,...]
         self._lldp_tx_threads = {}        # dpid -> greenthread
+        self._pending_links = {}  # lk -> (local_name, local_port, peer_dpid, peer_port)
+        hub.spawn(self._periodic_advertise_loop)
 
     @set_ev_cls(ofp_event.EventOFPStateChange, [MAIN_DISPATCHER, DEAD_DISPATCHER])
     def _state_change_handler(self, ev):
@@ -75,6 +76,17 @@ class MySimpleSwitch13(app_manager.RyuApp):
             ports.append(int(p.port_no))
         self._ports[dp.id] = ports
         self.logger.info(f"[CC] ports dpid={dp.id} -> {ports}")
+
+        # NEW: 端口就绪后立即发送一轮 LLDP，避免等待线程导致“卡住”
+        for pno in ports:
+            try:
+                self._send_lldp(dp, dp.id, int(pno))
+            except Exception as e:
+                self.logger.debug(f"[CC] initial LLDP tx error dpid={dp.id} port={pno}: {e}")
+
+        # NEW: 若线程尚未启动，补充启动
+        if dp.id not in self._lldp_tx_threads:
+            self._lldp_tx_threads[dp.id] = hub.spawn(self._lldp_tx_loop, dp.id)
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
@@ -124,21 +136,17 @@ class MySimpleSwitch13(app_manager.RyuApp):
         dp = msg.datapath
         pkt = packet.Packet(msg.data)
         eth = pkt.get_protocol(ethernet.ethernet)
-
-        # 仅处理 LLDP
         if not eth or eth.ethertype != ether_types.ETH_TYPE_LLDP:
             return
         pkt_lldp = pkt.get_protocol(lldp.lldp)
         if not pkt_lldp:
             return
 
-        # 解析对端 dpid/port
         peer_dpid, peer_port = None, None
         local_port = msg.match.get("in_port")
         try:
             for tlv in pkt_lldp.tlvs:
                 if isinstance(tlv, lldp.ChassisID):
-                    # chassis_id 通常是 'dpid:xxxxxxxx...' 字符串
                     s = tlv.chassis_id.decode(errors="ignore") if isinstance(tlv.chassis_id, (bytes, bytearray)) else str(tlv.chassis_id)
                     if s.startswith("dpid:"):
                         try:
@@ -146,7 +154,6 @@ class MySimpleSwitch13(app_manager.RyuApp):
                         except Exception:
                             self.logger.info(f"[CC] bad chassis_id '{s}'")
                 if isinstance(tlv, lldp.PortID):
-                    # 统一处理：若为字节，直接按大端整数；否则尝试字符串转 int
                     if isinstance(tlv.port_id, (bytes, bytearray)):
                         peer_port = int.from_bytes(tlv.port_id, byteorder='big', signed=False)
                         self.logger.info(f"[DEBUG] parsed peer_port from bytes -> {peer_port} (len={len(tlv.port_id)}, subtype={tlv.subtype})")
@@ -165,55 +172,33 @@ class MySimpleSwitch13(app_manager.RyuApp):
             self.logger.info("[CC] LLDP missing peer_dpid/peer_port, skip")
             return
 
-        local_name = self._dpid_name.get(dp.id, f"dpid:{dp.id:016x}")
-        # 如果用户没有显式给 boundary_switches（为空），就自动把本端交换机当作边界并上报
-        # 如果用户给了 boundary_switches，则只有在该本端名字属于白名单时才上报
-        if self.boundary_switches:
-            if local_name not in self.boundary_switches:
-            # 记录 debug 并不立即 return（可按需改为 return），这里建议记录并继续处理以便排查
-                self.logger.debug(f"[CC] local_name={local_name} not in configured boundaries {self.boundary_switches} -> ignore LLDP")
-                return
-        else:
-            # 把第一次看到的本端交换机名打印并加入边界，以便后续稳定
-            if local_name not in self.boundary_switches:
-                self.boundary_switches.append(local_name)
-                self.logger.info(f"[CC] auto-added boundary {local_name}")
-
-        # 忽略同域
-        if peer_dpid in self._local_dpids:
-            self.logger.info(f"[CC] LLDP peer in same cluster, ignore: peer_dpid={peer_dpid}")
+        # 忽略本机或同域
+        if peer_dpid == dp.id or peer_dpid in self._local_dpids:
             return
+
+        local_name = self._dpid_name.get(dp.id, f"dpid:{dp.id:016x}")
+        if local_name not in self.boundary_switches:
+            self.boundary_switches.append(local_name)
+            self.logger.info(f"[CC] auto-detected boundary switch {local_name}")
+            self._send_topology_update()
 
         lk = self._make_link_key(dp.id, local_port, peer_dpid, peer_port)
+        # 记录到缓存，供周期性重发
+        self._pending_links[lk] = (local_name, int(local_port), int(peer_dpid), int(peer_port))
 
-        if lk in self._session_seen:
-            return
-        
-        self._session_seen.add(lk)
-
-        # 改为时间窗去重：间隔内不重复上报，超时则重发
+        # 首次强制上报；后续按时间窗抑制
         now = time.time()
+        first = lk not in self._link_last_sent
         last = self._link_last_sent.get(lk, 0)
-        if now - last < self._lk_resend_sec:
+        if not first and now - last < self._lk_resend_sec:
             self.logger.debug(f"[CC] suppress resend within {self._lk_resend_sec}s: {lk}")
             return
         self._link_last_sent[lk] = now
 
-        # 上报
-        self.logger.info(f"[CC] WILL REPORT: local={local_name}:{local_port} peer_dpid={peer_dpid}:{peer_port} lk={lk}")
         upd = message_pb2.InterClusterLinkUpdate()
         upd.cluster_id = self.cluster_id
-
-        le_local = upd.links.add()
-        le_local.switch_id = local_name
-        le_local.port_no = int(local_port)
-        le_local.link_key = lk
-
-        le_peer = upd.links.add()
-        le_peer.switch_id = f"dpid:{peer_dpid:016x}"
-        le_peer.port_no = int(peer_port)
-        le_peer.link_key = lk
-
+        le_local = upd.links.add(); le_local.switch_id = local_name; le_local.port_no = int(local_port); le_local.link_key = lk
+        le_peer = upd.links.add();  le_peer.switch_id = f"dpid:{peer_dpid:016x}"; le_peer.port_no = int(peer_port); le_peer.link_key = lk
         data = message.encode_envelope(message_pb2.Envelope.INTERCLUSTER_LINK_UPDATE, upd)
         self.logger.info(f"[CC] LLDP跨域邻居: local={local_name}:{local_port} peer_dpid={peer_dpid}:{peer_port} lk={lk} -> send update bytes={len(data)}")
         self._send_bytes(data)
@@ -226,8 +211,9 @@ class MySimpleSwitch13(app_manager.RyuApp):
         # 建立连接并先发 HELLO
         sock = None; backoff = 1
         try:
-            with self._send_q.mutex:
-                self._send_q.queue.clear()
+            # 清空队列
+            while not self._send_q.empty():
+                self._send_q.get_nowait()
         except Exception:
             pass
         while sock is None:
@@ -235,21 +221,24 @@ class MySimpleSwitch13(app_manager.RyuApp):
                 sock = network.create_client_socket(self.ac_host, self.ac_port)
             except Exception:
                 hub.sleep(backoff); backoff = min(5, backoff * 2)
-        self._session_seen = set()
 
-        # HELLO 直接发送，保证时序
         hello = message_pb2.Hello()
         hello.node_id = f"CC-{self.cluster_id}"
         hello.version = "1.0"
         network.send_message(sock, message.encode_envelope(message_pb2.Envelope.HELLO, hello))
 
-        # 初始拓扑（手动边界）
+        # 初始拓扑
         self._send_topology_update()
         hub.spawn(self._ac_reader, sock)
 
-        # 队列发送循环
+        # 非阻塞发送循环：队列空时小睡避免卡死
+        from queue import Empty
         while True:
-            data = self._send_q.get()
+            try:
+                data = self._send_q.get_nowait()
+            except Empty:
+                hub.sleep(0.2)
+                continue
             try:
                 network.send_message(sock, data)
             except Exception:
@@ -272,13 +261,35 @@ class MySimpleSwitch13(app_manager.RyuApp):
         except Exception:
             self.logger.warning("[CC] send queue full, drop")
 
+    def _periodic_advertise_loop(self):
+        interval = max(1.0, self._lk_resend_sec / 2.0)
+        while True:
+            try:
+                now = time.time()
+                for lk, (lname, lport, pdpid, pport) in list(self._pending_links.items()):
+                    last = self._link_last_sent.get(lk, 0)
+                    if now - last >= self._lk_resend_sec:
+                        upd = message_pb2.InterClusterLinkUpdate()
+                        upd.cluster_id = self.cluster_id
+                        le_local = upd.links.add(); le_local.switch_id = lname; le_local.port_no = int(lport); le_local.link_key = lk
+                        le_peer  = upd.links.add(); le_peer.switch_id  = f"dpid:{pdpid:016x}"; le_peer.port_no = int(pport); le_peer.link_key = lk
+                        data = message.encode_envelope(message_pb2.Envelope.INTERCLUSTER_LINK_UPDATE, upd)
+                        self.logger.info(f"[CC] RE-ADVERTISE lk={lk} {lname}:{lport} <-> dpid:{pdpid:016x}:{pport}")
+                        self._send_bytes(data)
+                        self._link_last_sent[lk] = now
+            except Exception as e:
+                self.logger.debug(f"[CC] periodic advertise error: {e}")
+            hub.sleep(interval)
+
     def _send_topology_update(self):
         topo = message_pb2.TopologyUpdate()
         topo.cluster_id = self.cluster_id
         topo.boundary_switches.extend(self.boundary_switches)
-        # 新增：上报本域 dpid 集合
-        for dpid in sorted(self._local_dpids):
-            topo.local_dpids.append(int(dpid))
+        if hasattr(topo, "local_dpids"):
+            for dpid in sorted(self._local_dpids):
+                topo.local_dpids.append(int(dpid))
+        else:
+            self.logger.debug("[CC] proto TopologyUpdate.local_dpids not found, skip")
         data = message.encode_envelope(message_pb2.Envelope.TOPOLOGY_UPDATE, topo)
         self._send_bytes(data)
 
