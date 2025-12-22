@@ -1,0 +1,116 @@
+syntax = "proto3";
+
+package custom_protocol;
+
+// -------------------- 消息体定义 --------------------
+message Hello {
+  string node_id = 1;
+  string version = 2;
+}
+
+message FlowMod {
+  int32 cluster_id = 1;
+  repeated string actions = 2;
+  map<string, string> match_fields = 3;
+}
+
+message FlowRequest {
+  int32 src_cluster = 1;
+  int32 dst_cluster = 2;
+  map<string, string> match_fields = 3;
+}
+
+message Segment {
+  int32 cluster_id = 1;
+  string ingress_border = 2;
+  string egress_border = 3;
+  string tunnel_id = 4;
+}
+
+message FlowReply {
+  repeated string path = 1;
+  map<string, string> match_fields = 2;
+  repeated Segment segments = 3;
+}
+
+message ErrorMsg {
+  int32 code = 1;
+  string reason = 2;
+}
+
+message Keepalive {
+  uint64 ts_ms = 1;
+}
+
+message BoundaryPort {
+  uint32 port_no = 1;
+  string link_key = 2;
+  string peer_hint = 3;
+}
+
+message BoundarySwitch {
+  string switch_id = 1;
+  repeated BoundaryPort ports = 2;
+}
+
+message TopologyUpdate {
+  uint32 cluster_id = 1;
+  repeated string boundary_switches = 2;   // 兼容旧字段
+  repeated BoundarySwitch boundaries = 3;  // 结构化字段
+}
+
+message InterClusterLinkUpdate {
+  uint32 cluster_id = 1;
+  message LinkEnd {
+    string switch_id = 1;
+    uint32 port_no = 2;
+    string link_key = 3;
+    string peer_hint = 4;
+  }
+  repeated LinkEnd links = 2;
+}
+
+message InterClusterLinkMetrics {
+  uint32 cluster_id = 1;
+  message MetricEntry {
+    string link_key = 1;
+    double latency_ms = 2;
+    double load = 3;
+    double loss_ratio = 4;
+    double avail_bw_mbps = 5;
+  }
+  repeated MetricEntry metrics = 2;
+}
+
+// -------------------- 顶层封装 --------------------
+message Envelope {
+  enum Type {
+    HELLO = 0;
+    FLOW_MOD = 1;
+    FLOW_REQUEST = 2;
+    FLOW_REPLY = 3;
+    ERROR = 4;
+    KEEPALIVE = 5;
+    TOPOLOGY_UPDATE = 6;
+    INTERCLUSTER_LINK_UPDATE = 7;
+    INTERCLUSTER_LINK_METRICS = 8; // NEW
+  }
+
+  Type type = 1;
+
+  // 请求-应答关联
+  uint64 msg_id = 9;
+  uint64 corr_id = 10;
+
+  oneof body {
+    Hello hello = 2;
+    FlowMod flow_mod = 4;
+    FlowRequest flow_request = 5;
+    FlowReply flow_reply = 6;
+    ErrorMsg error = 7;
+    Keepalive keepalive = 8;
+    TopologyUpdate topology_update = 16;
+    InterClusterLinkUpdate intercluster_link_update = 17;
+    InterClusterLinkMetrics intercluster_link_metrics = 18; // NEW
+  }
+}
