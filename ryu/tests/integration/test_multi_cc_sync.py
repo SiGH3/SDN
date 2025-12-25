@@ -13,13 +13,15 @@ import socket
 from io import BytesIO
 
 # Mock imports for testing without full Ryu environment
+import logging
+
 try:
     from ryu.custom.controller.sync_protocol import SyncProtocol
     from ryu.custom.controller.state_manager import ThreadSafeStateManager
     HAS_MODULES = True
 except ImportError:
     HAS_MODULES = False
-    print("Warning: Could not import modules, skipping integration tests")
+    logging.warning("Could not import required modules for integration tests")
 
 
 @unittest.skipIf(not HAS_MODULES, "Required modules not available")

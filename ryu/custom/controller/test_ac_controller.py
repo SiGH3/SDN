@@ -50,16 +50,7 @@ def _on_intercluster_link_update(env, peer_sock=None):
         _incremental_retry(affected)
 
 
-# Remove legacy globals - now managed by STATE
-# GRAPH = ClusterGraph()                  # Now in STATE
-# PENDING = []                            # Now in STATE
-# PENDING_LOCK = threading.Lock()         # Now in STATE
-
 CC_LIST = []  # 主动连接的 CC 列表，如需主动连接可填: [("127.0.0.1", 9000), ("127.0.0.1", 9001)]
-
-# Remove legacy connection tracking - now managed by SYNC
-# CLUSTER_CONN = {}              # Now in SYNC
-# CONN_CLUSTER = {}              # Now in SYNC
 
 def _register_cluster_conn(cluster_id: int, conn):
     """Register cluster connection - delegated to SYNC"""

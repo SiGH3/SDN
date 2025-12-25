@@ -301,6 +301,9 @@ class SyncProtocol:
     
     def _monitor_loop(self):
         """Background monitoring loop for health checks"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
         while not self._stop_flag.is_set():
             try:
                 with self._health_lock:
@@ -308,8 +311,10 @@ class SyncProtocol:
                     for cluster_id, health in list(self._cluster_health.items()):
                         if health.is_active and health.is_timeout(self.heartbeat_timeout):
                             health.is_active = False
-                            print(f"[Sync] Cluster {cluster_id} timed out "
-                                  f"(last heartbeat {now - health.last_heartbeat:.1f}s ago)")
+                            logger.warning(
+                                f"[Sync] Cluster {cluster_id} timed out "
+                                f"(last heartbeat {now - health.last_heartbeat:.1f}s ago)"
+                            )
                             if self._on_cc_timeout:
                                 self._on_cc_timeout(cluster_id)
                 
@@ -324,7 +329,7 @@ class SyncProtocol:
                 
                 time.sleep(self.heartbeat_interval / 2)
             except Exception as e:
-                print(f"[Sync] Monitor loop error: {e}")
+                logger.exception(f"[Sync] Monitor loop error: {e}")
                 time.sleep(1.0)
     
     def set_timeout_callback(self, callback: Callable[[int], None]):

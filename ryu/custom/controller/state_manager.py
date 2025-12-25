@@ -155,6 +155,9 @@ class ThreadSafeStateManager:
         Returns:
             Number of requests successfully processed
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        
         with self._pending_lock:
             remaining = []
             processed_count = 0
@@ -175,7 +178,7 @@ class ThreadSafeStateManager:
                     else:
                         remaining.append(req)
                 except Exception as e:
-                    print(f"[StateManager] Error processing pending request: {e}")
+                    logger.exception(f"[StateManager] Error processing pending request: {e}")
                     remaining.append(req)
             
             self._pending[:] = remaining
