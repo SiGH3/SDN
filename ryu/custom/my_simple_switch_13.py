@@ -109,11 +109,14 @@ class MySimpleSwitch13(app_manager.RyuApp):
         self._local_dpids.add(dp.id)
 
         # 映射 dpid -> 预设边界名（按发现顺序），不足时回退 dpid:xxxx
-        if dp.id not in self._dpid_name:
+        new_switch = dp.id not in self._dpid_name
+        if new_switch:
             idx = len(self._dpid_name)
             name = self.boundary_switches[idx] if idx < len(self.boundary_switches) else f"dpid:{dp.id:016x}"
             self._dpid_name[dp.id] = name
             self.logger.info(f"[CC] map dpid={dp.id} -> name={name}")
+            # Send topology update to AC when new switch discovered
+            hub.spawn(lambda: (hub.sleep(0.5), self._send_topology_update()))
 
         # 优先级最高：LLDP punt 给控制器
         dp.send_msg(parser.OFPFlowMod(
