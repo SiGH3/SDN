@@ -249,7 +249,7 @@ class MySimpleSwitch13(app_manager.RyuApp):
         while True:
             try:
                 data = self._send_q.get_nowait()
-            except hub.queue.Empty:
+            except hub.QueueEmpty:
                 hub.sleep(0.2)
                 continue
             try:
