@@ -49,7 +49,14 @@ class MySimpleSwitch13(app_manager.RyuApp):
         self._ports = defaultdict(list)   # dpid -> [port_no,...]
         self._lldp_tx_threads = {}        # dpid -> greenthread
         self._pending_links = {}  # lk -> (local_name, local_port, peer_dpid, peer_port)
+        
+        # Message tracking for synchronization
+        self._msg_counter = 0
+        self._msg_counter_lock = hub.Semaphore()
+        
+        # Start background loops
         hub.spawn(self._periodic_advertise_loop)
+        hub.spawn(self._heartbeat_loop)
 
     @set_ev_cls(ofp_event.EventOFPStateChange, [MAIN_DISPATCHER, DEAD_DISPATCHER])
     def _state_change_handler(self, ev):
@@ -199,8 +206,15 @@ class MySimpleSwitch13(app_manager.RyuApp):
         upd.cluster_id = self.cluster_id
         le_local = upd.links.add(); le_local.switch_id = local_name; le_local.port_no = int(local_port); le_local.link_key = lk
         le_peer = upd.links.add();  le_peer.switch_id = f"dpid:{peer_dpid:016x}"; le_peer.port_no = int(peer_port); le_peer.link_key = lk
-        data = message.encode_envelope(message_pb2.Envelope.INTERCLUSTER_LINK_UPDATE, upd)
-        self.logger.info(f"[CC] LLDP跨域邻居: local={local_name}:{local_port} peer_dpid={peer_dpid}:{peer_port} lk={lk} -> send update bytes={len(data)}")
+        
+        # Create envelope with message ID for tracking
+        envelope = message_pb2.Envelope()
+        envelope.type = message_pb2.Envelope.INTERCLUSTER_LINK_UPDATE
+        envelope.msg_id = self._next_msg_id()
+        envelope.intercluster_link_update.CopyFrom(upd)
+        data = envelope.SerializeToString()
+        
+        self.logger.info(f"[CC] LLDP跨域邻居: local={local_name}:{local_port} peer_dpid={peer_dpid}:{peer_port} lk={lk} msg_id={envelope.msg_id} -> send update bytes={len(data)}")
         self._send_bytes(data)
 
     def _make_link_key(self, a_dpid, a_port, b_dpid, b_port):
@@ -260,6 +274,26 @@ class MySimpleSwitch13(app_manager.RyuApp):
             self._send_q.put_nowait(data)
         except Exception:
             self.logger.warning("[CC] send queue full, drop")
+    
+    def _next_msg_id(self):
+        """Generate next message ID atomically"""
+        with self._msg_counter_lock:
+            self._msg_counter += 1
+            return self._msg_counter
+    
+    def _heartbeat_loop(self):
+        """Send periodic heartbeats to AC for health monitoring"""
+        heartbeat_interval = 10.0  # seconds
+        while True:
+            try:
+                hub.sleep(heartbeat_interval)
+                keepalive = message_pb2.Keepalive()
+                keepalive.ts_ms = int(time.time() * 1000)
+                data = message.encode_envelope(message_pb2.Envelope.KEEPALIVE, keepalive)
+                self._send_bytes(data)
+                self.logger.debug(f"[CC] Heartbeat sent to AC")
+            except Exception as e:
+                self.logger.debug(f"[CC] Heartbeat error: {e}")
 
     def _periodic_advertise_loop(self):
         interval = max(1.0, self._lk_resend_sec / 2.0)
@@ -273,8 +307,15 @@ class MySimpleSwitch13(app_manager.RyuApp):
                         upd.cluster_id = self.cluster_id
                         le_local = upd.links.add(); le_local.switch_id = lname; le_local.port_no = int(lport); le_local.link_key = lk
                         le_peer  = upd.links.add(); le_peer.switch_id  = f"dpid:{pdpid:016x}"; le_peer.port_no = int(pport); le_peer.link_key = lk
-                        data = message.encode_envelope(message_pb2.Envelope.INTERCLUSTER_LINK_UPDATE, upd)
-                        self.logger.info(f"[CC] RE-ADVERTISE lk={lk} {lname}:{lport} <-> dpid:{pdpid:016x}:{pport}")
+                        
+                        # Create envelope with message ID
+                        envelope = message_pb2.Envelope()
+                        envelope.type = message_pb2.Envelope.INTERCLUSTER_LINK_UPDATE
+                        envelope.msg_id = self._next_msg_id()
+                        envelope.intercluster_link_update.CopyFrom(upd)
+                        data = envelope.SerializeToString()
+                        
+                        self.logger.info(f"[CC] RE-ADVERTISE lk={lk} {lname}:{lport} <-> dpid:{pdpid:016x}:{pport} msg_id={envelope.msg_id}")
                         self._send_bytes(data)
                         self._link_last_sent[lk] = now
             except Exception as e:
