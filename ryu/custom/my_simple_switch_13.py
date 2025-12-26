@@ -246,11 +246,10 @@ class MySimpleSwitch13(app_manager.RyuApp):
         hub.spawn(self._ac_reader, sock)
 
         # 非阻塞发送循环：队列空时小睡避免卡死
-        from queue import Empty
         while True:
             try:
                 data = self._send_q.get_nowait()
-            except Empty:
+            except hub.queue.Empty:
                 hub.sleep(0.2)
                 continue
             try:
