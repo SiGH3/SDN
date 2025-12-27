@@ -299,12 +299,21 @@ class MySimpleSwitch13(app_manager.RyuApp):
 
     def _periodic_advertise_loop(self):
         interval = max(1.0, self._lk_resend_sec / 2.0)
+        self.logger.info(f"[CC] Periodic advertise loop started: interval={interval}s, resend_sec={self._lk_resend_sec}s")
+        loop_count = 0
         while True:
             try:
+                hub.sleep(interval)
+                loop_count += 1
                 now = time.time()
+                pending_count = len(self._pending_links)
+                self.logger.debug(f"[CC] Periodic loop #{loop_count}: checking {pending_count} pending links")
+                
+                resent_count = 0
                 for lk, (lname, lport, pdpid, pport) in list(self._pending_links.items()):
                     last = self._link_last_sent.get(lk, 0)
-                    if now - last >= self._lk_resend_sec:
+                    elapsed = now - last
+                    if elapsed >= self._lk_resend_sec:
                         upd = message_pb2.InterClusterLinkUpdate()
                         upd.cluster_id = self.cluster_id
                         le_local = upd.links.add(); le_local.switch_id = lname; le_local.port_no = int(lport); le_local.link_key = lk
@@ -317,12 +326,17 @@ class MySimpleSwitch13(app_manager.RyuApp):
                         envelope.intercluster_link_update.CopyFrom(upd)
                         data = envelope.SerializeToString()
                         
-                        self.logger.info(f"[CC] RE-ADVERTISE lk={lk} {lname}:{lport} <-> dpid:{pdpid:016x}:{pport} msg_id={envelope.msg_id}")
+                        self.logger.info(f"[CC] RE-ADVERTISE lk={lk} {lname}:{lport} <-> dpid:{pdpid:016x}:{pport} msg_id={envelope.msg_id} elapsed={elapsed:.1f}s")
                         self._send_bytes(data)
                         self._link_last_sent[lk] = now
+                        resent_count += 1
+                    else:
+                        self.logger.debug(f"[CC] Skip lk={lk}: elapsed={elapsed:.1f}s < {self._lk_resend_sec}s")
+                
+                if resent_count > 0 or pending_count > 0:
+                    self.logger.info(f"[CC] Periodic loop #{loop_count}: re-sent {resent_count}/{pending_count} links")
             except Exception as e:
-                self.logger.debug(f"[CC] periodic advertise error: {e}")
-            hub.sleep(interval)
+                self.logger.warning(f"[CC] Periodic advertise error: {e}", exc_info=True)
 
     def _send_topology_update(self):
         topo = message_pb2.TopologyUpdate()
@@ -354,9 +368,13 @@ class MySimpleSwitch13(app_manager.RyuApp):
     def _lldp_tx_loop(self, dpid: int):
         burst = 3
         interval = 2.0
+        loop_count = 0
+        name = self._dpid_name.get(dpid, f"dpid:{dpid:016x}")
+        self.logger.info(f"[CC] LLDP TX loop started for {name} (dpid={dpid}): interval={interval}s")
         while dpid in self._datapaths:
             dp = self._datapaths.get(dpid)
             if not dp:
+                self.logger.warning(f"[CC] LLDP TX loop: datapath {name} disappeared")
                 break
             ports = self._ports.get(dpid, [])
             if not ports:
@@ -369,13 +387,21 @@ class MySimpleSwitch13(app_manager.RyuApp):
                 continue
             # 启动初期做几轮快速 burst，后续按固定周期
             rounds = 3 if burst > 0 else 1
+            loop_count += 1
+            sent_count = 0
             for _ in range(rounds):
                 for pno in ports:
                     try:
                         self._send_lldp(dp, dpid, int(pno))
+                        sent_count += 1
                     except Exception as e:
                         self.logger.debug(f"[CC] LLDP tx error dpid={dpid} port={pno}: {e}")
                 burst = max(0, burst - 1)
+            
+            # Log periodically to confirm loop is running
+            if loop_count % 10 == 1:  # Log every 10th iteration (every ~20 seconds)
+                self.logger.info(f"[CC] LLDP TX loop #{loop_count} for {name}: sent {sent_count} packets to {len(ports)} ports")
+            
             hub.sleep(interval)
 
     def _send_lldp(self, dp, dpid: int, port_no: int):
