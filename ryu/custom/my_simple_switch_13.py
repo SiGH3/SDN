@@ -307,7 +307,10 @@ class MySimpleSwitch13(app_manager.RyuApp):
                 loop_count += 1
                 now = time.time()
                 pending_count = len(self._pending_links)
-                self.logger.debug(f"[CC] Periodic loop #{loop_count}: checking {pending_count} pending links")
+                
+                # Log more frequently initially
+                if loop_count <= 5 or loop_count % 5 == 0:
+                    self.logger.info(f"[CC] Periodic loop #{loop_count}: checking {pending_count} pending links")
                 
                 resent_count = 0
                 for lk, (lname, lport, pdpid, pport) in list(self._pending_links.items()):
@@ -333,7 +336,7 @@ class MySimpleSwitch13(app_manager.RyuApp):
                     else:
                         self.logger.debug(f"[CC] Skip lk={lk}: elapsed={elapsed:.1f}s < {self._lk_resend_sec}s")
                 
-                if resent_count > 0 or pending_count > 0:
+                if resent_count > 0:
                     self.logger.info(f"[CC] Periodic loop #{loop_count}: re-sent {resent_count}/{pending_count} links")
             except Exception as e:
                 self.logger.warning(f"[CC] Periodic advertise error: {e}", exc_info=True)
@@ -379,6 +382,8 @@ class MySimpleSwitch13(app_manager.RyuApp):
             ports = self._ports.get(dpid, [])
             if not ports:
                 # 尚未拿到端口，重试拉取
+                loop_count += 1
+                self.logger.warning(f"[CC] LLDP TX loop #{loop_count} for {name}: no ports yet, waiting...")
                 try:
                     self._request_port_desc(dp)
                 except Exception:
@@ -395,11 +400,11 @@ class MySimpleSwitch13(app_manager.RyuApp):
                         self._send_lldp(dp, dpid, int(pno))
                         sent_count += 1
                     except Exception as e:
-                        self.logger.debug(f"[CC] LLDP tx error dpid={dpid} port={pno}: {e}")
+                        self.logger.warning(f"[CC] LLDP tx error dpid={dpid} port={pno}: {e}")
                 burst = max(0, burst - 1)
             
-            # Log periodically to confirm loop is running
-            if loop_count % 10 == 1:  # Log every 10th iteration (every ~20 seconds)
+            # Log every iteration for first 5, then every 5th iteration
+            if loop_count <= 5 or loop_count % 5 == 0:
                 self.logger.info(f"[CC] LLDP TX loop #{loop_count} for {name}: sent {sent_count} packets to {len(ports)} ports")
             
             hub.sleep(interval)
