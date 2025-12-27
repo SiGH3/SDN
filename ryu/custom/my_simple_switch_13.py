@@ -63,6 +63,9 @@ class MySimpleSwitch13(app_manager.RyuApp):
         dp = ev.datapath
         if ev.state == MAIN_DISPATCHER:
             self._datapaths[dp.id] = dp
+            # Start LLDP TX loop now that datapath is registered
+            if dp.id not in self._lldp_tx_threads:
+                self._lldp_tx_threads[dp.id] = hub.spawn(self._lldp_tx_loop, dp.id)
         elif ev.state == DEAD_DISPATCHER:
             self._datapaths.pop(dp.id, None)
             self._ports.pop(dp.id, None)
@@ -135,10 +138,8 @@ class MySimpleSwitch13(app_manager.RyuApp):
                                                                                ofp.OFPCML_NO_BUFFER)])]
         ))
 
-        # 查询端口并启动本地 LLDP 发送线程
+        # 查询端口 (LLDP TX loop will be started when state becomes MAIN_DISPATCHER)
         self._request_port_desc(dp)
-        if dp.id not in self._lldp_tx_threads:
-            self._lldp_tx_threads[dp.id] = hub.spawn(self._lldp_tx_loop, dp.id)
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def packet_in_handler(self, ev):
