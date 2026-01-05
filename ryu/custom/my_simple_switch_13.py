@@ -156,6 +156,10 @@ class MySimpleSwitch13(app_manager.RyuApp):
         if not eth:
             return
         
+        # Log all packet-ins for debugging
+        in_port = msg.match.get('in_port', 'unknown')
+        self.logger.info(f"[CC] Packet-in: dpid={dp.id:016x} port={in_port} src={eth.src} dst={eth.dst} ethertype={hex(eth.ethertype)}")
+        
         # Handle LLDP packets for topology discovery
         if eth.ethertype == ether_types.ETH_TYPE_LLDP:
             self._handle_lldp_packet(msg, dp, pkt, eth)
@@ -252,37 +256,57 @@ class MySimpleSwitch13(app_manager.RyuApp):
         # Learn source MAC
         self._mac_to_port.setdefault(dpid, {})
         if src_mac not in self._mac_to_port[dpid]:
-            self.logger.info(f"[CC] Learn MAC {src_mac} on dpid={dpid} port={in_port}")
+            self.logger.info(f"[CC] Learned local MAC: {src_mac} on switch dpid={dpid:016x} port={in_port}")
         self._mac_to_port[dpid][src_mac] = in_port
         self._local_hosts.add(src_mac)
+        
+        # Extract IP information for cross-cluster detection
+        pkt_ipv4 = pkt.get_protocol(ipv4.ipv4)
+        pkt_arp = pkt.get_protocol(arp.arp)
+        
+        src_ip = None
+        dst_ip = None
+        
+        if pkt_ipv4:
+            src_ip = pkt_ipv4.src
+            dst_ip = pkt_ipv4.dst
+        elif pkt_arp:
+            src_ip = pkt_arp.src_ip
+            dst_ip = pkt_arp.dst_ip
+        
+        # Check destination cluster
+        dst_cluster = None
+        if dst_ip:
+            try:
+                dst_parts = dst_ip.split('.')
+                if len(dst_parts) == 4:
+                    # Assume 10.0.X.Y format where X is cluster ID
+                    dst_cluster = int(dst_parts[2])
+            except:
+                pass
         
         # Check if destination is local
         out_port = self._mac_to_port.get(dpid, {}).get(dst_mac)
         
-        if out_port is None:
-            # Check if this might be cross-cluster traffic
-            # If we don't know the MAC locally, it might be in another cluster
-            if dst_mac not in self._local_hosts and not dst_mac.startswith('ff:ff:ff'):
-                # This is potentially cross-cluster traffic
-                # Extract source and destination clusters
-                pkt_ipv4 = pkt.get_protocol(ipv4.ipv4)
-                pkt_arp = pkt.get_protocol(arp.arp)
-                
-                if pkt_ipv4:
-                    src_ip = pkt_ipv4.src
-                    dst_ip = pkt_ipv4.dst
-                    self.logger.info(f"[CC] Cross-cluster IP packet: {src_ip} -> {dst_ip}")
-                    self._request_cross_cluster_path(src_ip, dst_ip, src_mac, dst_mac)
-                elif pkt_arp:
-                    src_ip = pkt_arp.src_ip
-                    dst_ip = pkt_arp.dst_ip
-                    self.logger.info(f"[CC] Cross-cluster ARP packet: {src_ip} -> {dst_ip}")
-                    self._request_cross_cluster_path(src_ip, dst_ip, src_mac, dst_mac)
-            
-            # Flood the packet for now
+        # Determine if this is cross-cluster traffic
+        if dst_cluster and dst_cluster != self.cluster_id:
+            self.logger.info(f"[CC] *** CROSS-CLUSTER TRAFFIC DETECTED ***")
+            self.logger.info(f"[CC]     Source: {src_ip} (cluster {self.cluster_id})")
+            self.logger.info(f"[CC]     Destination: {dst_ip} (cluster {dst_cluster})")
+            self.logger.info(f"[CC]     This is NOT local traffic - need AC routing")
+            self._request_cross_cluster_path(src_ip, dst_ip, src_mac, dst_mac)
+            # Still forward the packet (flood if no port known)
+            if out_port is None:
+                out_port = ofproto.OFPP_FLOOD
+        elif out_port is None:
+            # Unknown destination but same cluster - flood
+            self.logger.info(f"[CC] Unknown local destination {dst_mac}, flooding")
             out_port = ofproto.OFPP_FLOOD
+        else:
+            # Known local destination
+            self.logger.info(f"[CC] Forwarding to known local port {out_port}")
         
-        # Install a flow to avoid packet_in next time
+        # Install a flow to avoid packet_in next time for local traffic
         actions = [parser.OFPActionOutput(out_port)]
         
         # Send packet out
@@ -296,11 +320,6 @@ class MySimpleSwitch13(app_manager.RyuApp):
     
     def _request_cross_cluster_path(self, src_ip, dst_ip, src_mac, dst_mac):
         """Request cross-cluster path from AC"""
-        # For simplicity, determine destination cluster based on IP ranges
-        # In a real deployment, you'd have a mapping table
-        # For testing: assume cluster IDs match the 3rd octet of IP
-        # e.g., 10.0.1.x -> cluster 1, 10.0.2.x -> cluster 2, 10.0.3.x -> cluster 3
-        
         try:
             src_cluster = self.cluster_id
             # Parse destination cluster from IP (simplified)
@@ -309,10 +328,12 @@ class MySimpleSwitch13(app_manager.RyuApp):
                 # Assume 10.0.X.Y format where X is cluster ID
                 dst_cluster = int(dst_parts[2])
             else:
+                self.logger.warning(f"[CC] Cannot parse cluster ID from IP {dst_ip}")
                 return
             
             if dst_cluster == src_cluster:
                 # Same cluster, no need for cross-cluster routing
+                self.logger.info(f"[CC] Same cluster {src_cluster}, no cross-cluster routing needed")
                 return
             
             # Check if we already have a pending request
@@ -321,9 +342,16 @@ class MySimpleSwitch13(app_manager.RyuApp):
             if req_key in self._flow_requests_pending:
                 last_req = self._flow_requests_pending[req_key]
                 if now - last_req < 5.0:  # Don't spam requests
+                    self.logger.info(f"[CC] FlowRequest for C{src_cluster}->C{dst_cluster} already pending (within 5s), skipping")
                     return
             
             self._flow_requests_pending[req_key] = now
+            
+            self.logger.info(f"[CC] ===== SENDING FLOW REQUEST TO AC =====")
+            self.logger.info(f"[CC]   Source Cluster: {src_cluster}")
+            self.logger.info(f"[CC]   Destination Cluster: {dst_cluster}")
+            self.logger.info(f"[CC]   Source IP: {src_ip}")
+            self.logger.info(f"[CC]   Destination IP: {dst_ip}")
             
             # Send FlowRequest to AC
             req = message_pb2.FlowRequest()
@@ -340,11 +368,11 @@ class MySimpleSwitch13(app_manager.RyuApp):
             envelope.flow_request.CopyFrom(req)
             data = envelope.SerializeToString()
             
-            self.logger.info(f"[CC] Sending FlowRequest: C{src_cluster}->C{dst_cluster}, src={src_ip}, dst={dst_ip}, msg_id={envelope.msg_id}")
+            self.logger.info(f"[CC] FlowRequest sent: C{src_cluster}->C{dst_cluster}, msg_id={envelope.msg_id}, bytes={len(data)}")
             self._send_bytes(data)
             
         except Exception as e:
-            self.logger.warning(f"[CC] FlowRequest error: {e}")
+            self.logger.error(f"[CC] FlowRequest error: {e}", exc_info=True)
 
     def _make_link_key(self, a_dpid, a_port, b_dpid, b_port):
         ends = sorted([(int(a_dpid), int(a_port)), (int(b_dpid), int(b_port))])
@@ -489,7 +517,10 @@ class MySimpleSwitch13(app_manager.RyuApp):
                 env = message.decode_envelope(data)
                 if env.type == message_pb2.Envelope.FLOW_REPLY:
                     fr = env.flow_reply
-                    self.logger.info(f"[CC] FLOW_REPLY path={list(fr.path)} segments={len(fr.segments)} match={dict(fr.match_fields)}")
+                    self.logger.info(f"[CC] ===== RECEIVED FLOW REPLY FROM AC =====")
+                    self.logger.info(f"[CC]   Path: {list(fr.path)}")
+                    self.logger.info(f"[CC]   Segments: {len(fr.segments)}")
+                    self.logger.info(f"[CC]   Match fields: {dict(fr.match_fields)}")
                     self._install_flow_from_reply(fr)
             except Exception as e:
                 self.logger.warning(f"[CC] AC reader error: {e}")
@@ -501,8 +532,9 @@ class MySimpleSwitch13(app_manager.RyuApp):
             match_fields = dict(flow_reply.match_fields)
             path = list(flow_reply.path)
             
-            self.logger.info(f"[CC] Installing flows for path: {path}")
-            self.logger.info(f"[CC] Match fields: {match_fields}")
+            self.logger.info(f"[CC] ===== INSTALLING FLOWS FROM AC REPLY =====")
+            self.logger.info(f"[CC]   Path to follow: {path}")
+            self.logger.info(f"[CC]   Match fields: {match_fields}")
             
             # Find the segment for this cluster
             my_segment = None
@@ -512,8 +544,10 @@ class MySimpleSwitch13(app_manager.RyuApp):
                     break
             
             if not my_segment:
-                self.logger.info(f"[CC] No segment for cluster {self.cluster_id}, skipping flow installation")
+                self.logger.warning(f"[CC] No segment for cluster {self.cluster_id} in reply, skipping flow installation")
                 return
+            
+            self.logger.info(f"[CC] Found segment for cluster {self.cluster_id}")
             
             # For simplicity, install a basic flow that forwards based on destination IP
             # In a full implementation, you'd identify the exact boundary switches and ports
@@ -525,6 +559,7 @@ class MySimpleSwitch13(app_manager.RyuApp):
                 return
             
             # Install flow on all switches in this cluster
+            installed_count = 0
             for dpid, dp in self._datapaths.items():
                 parser = dp.ofproto_parser
                 ofproto = dp.ofproto
@@ -539,7 +574,7 @@ class MySimpleSwitch13(app_manager.RyuApp):
                     for lk, (lname, lport, pdpid, pport) in self._pending_links.items():
                         if lname == self._dpid_name.get(dpid) and lport == port_no:
                             out_port = port_no
-                            self.logger.info(f"[CC] Found boundary port {out_port} on dpid={dpid} for cross-cluster traffic")
+                            self.logger.info(f"[CC] Found boundary port {out_port} on switch dpid={dpid:016x} for cross-cluster forwarding")
                             break
                     if out_port != ofproto.OFPP_FLOOD:
                         break
@@ -555,7 +590,10 @@ class MySimpleSwitch13(app_manager.RyuApp):
                                        idle_timeout=30, hard_timeout=60)
                 dp.send_msg(mod)
                 
-                self.logger.info(f"[CC] Installed flow on dpid={dpid}: dst_ip={dst_ip} -> port={out_port}")
+                self.logger.info(f"[CC] ✓ Installed flow on switch dpid={dpid:016x}: dst_ip={dst_ip} -> port={out_port}")
+                installed_count += 1
+            
+            self.logger.info(f"[CC] ===== FLOW INSTALLATION COMPLETE: {installed_count} switches =====")
                 
         except Exception as e:
             self.logger.error(f"[CC] Error installing flow from reply: {e}", exc_info=True)
