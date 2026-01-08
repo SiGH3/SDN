@@ -177,9 +177,16 @@ ping -I veth-h1 10.0.2.20
 # tcpdump抓包
 sudo tcpdump -i vxlan-c2 -n
 
-# iperf带宽测试
-iperf -s -B 10.0.1.10  # 服务器
-iperf -c 10.0.1.10 -B 10.0.2.20  # 客户端
+# iperf带宽测试（推荐使用iperf3）
+# 在机器3（10.0.2.20）启动服务器
+iperf3 -s -B 10.0.2.20
+# 或使用iperf2
+iperf -s -B 10.0.2.20
+
+# 在机器2（10.0.1.10）启动客户端连接到机器3
+iperf3 -c 10.0.2.20 -B 10.0.1.10
+# 或使用iperf2
+iperf -c 10.0.2.20 -B 10.0.1.10
 
 # 查看路由表
 ip route

@@ -524,29 +524,43 @@ sudo ovs-vsctl set port vxlan-c2 tag=100
 ### 9.3 启用OpenFlow日志
 
 ```bash
-# 增加OVS日志级别
+# 增加OVS日志级别（警告：会产生大量日志，仅用于调试）
 sudo ovs-appctl vlog/set ofproto_dpif:dbg
 sudo ovs-appctl vlog/set ofproto:dbg
 
 # 查看日志
 sudo journalctl -u openvswitch -f
+
+# 恢复正常日志级别
+sudo ovs-appctl vlog/set ofproto_dpif:info
+sudo ovs-appctl vlog/set ofproto:info
 ```
+
+**注意**: 调试日志会显著增加日志量，可能影响性能。生产环境应谨慎使用。
 
 ## 十、性能测试
 
 ### 10.1 使用iperf测试带宽
 
-在机器2上：
+在机器3上（目标主机）：
 ```bash
-# 启动iperf服务器
-iperf -s -B 10.0.1.10
+# 启动iperf3服务器（推荐）
+iperf3 -s -B 10.0.2.20
+
+# 或使用iperf2
+iperf -s -B 10.0.2.20
 ```
 
-在机器3上：
+在机器2上（源主机）：
 ```bash
-# 运行iperf客户端
-iperf -c 10.0.1.10 -B 10.0.2.20 -t 30
+# 运行iperf3客户端
+iperf3 -c 10.0.2.20 -B 10.0.1.10 -t 30
+
+# 或使用iperf2
+iperf -c 10.0.2.20 -B 10.0.1.10 -t 30
 ```
+
+**说明**: `-B` 参数指定本地绑定地址（源IP），`-c` 参数指定目标服务器IP。
 
 ### 10.2 测试延迟
 

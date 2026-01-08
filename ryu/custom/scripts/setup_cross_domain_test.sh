@@ -129,9 +129,9 @@ SESSION_NAME="cross_domain_controllers"
 if ! command -v tmux &> /dev/null; then
     echo "错误: 需要安装tmux"
     echo "请根据您的Linux发行版使用相应的包管理器安装:"
-    echo "  Ubuntu/Debian: sudo apt-get install tmux"
+    echo "  Ubuntu/Debian: sudo apt-get install tmux  或  sudo apt install tmux"
     echo "  CentOS/RHEL:   sudo yum install tmux"
-    echo "  Fedora:        sudo dnf install tmux"
+    echo "  CentOS Stream 8+/Fedora: sudo dnf install tmux"
     exit 1
 fi
 
