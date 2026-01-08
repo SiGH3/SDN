@@ -54,10 +54,10 @@ setup_controller_node() {
     mkdir -p scripts/cross_domain
     
     # 创建AC启动脚本
-    cat > scripts/cross_domain/start_ac.sh << 'EOF'
+    cat > scripts/cross_domain/start_ac.sh << EOF
 #!/bin/bash
-cd "$(dirname "$0")/../.."
-export PYTHONPATH=$(pwd):$PYTHONPATH
+cd "$SDN_PATH"
+export PYTHONPATH=\$(pwd):\$PYTHONPATH
 
 echo "===================================="
 echo "启动AC聚合控制器"
@@ -67,10 +67,10 @@ python3 -m ryu.custom.controller.test_ac_controller 10000
 EOF
     
     # 创建CC1启动脚本
-    cat > scripts/cross_domain/start_cc1.sh << 'EOF'
+    cat > scripts/cross_domain/start_cc1.sh << EOF
 #!/bin/bash
-cd "$(dirname "$0")/../.."
-export PYTHONPATH=$(pwd):$PYTHONPATH
+cd "$SDN_PATH"
+export PYTHONPATH=\$(pwd):\$PYTHONPATH
 
 # CC1配置
 export CLUSTER_ID=1
@@ -82,21 +82,21 @@ echo "===================================="
 echo "启动CC1集群控制器"
 echo "集群ID: 1"
 echo "OpenFlow端口: 6653"
-echo "AC地址: ${AC_HOST}:${AC_PORT}"
-echo "目标集群: ${DST_CLUSTERS}"
+echo "AC地址: \${AC_HOST}:\${AC_PORT}"
+echo "目标集群: \${DST_CLUSTERS}"
 echo "===================================="
 
-ryu-manager \
-    --observe-links \
-    --ofp-tcp-listen-port 6653 \
+ryu-manager \\
+    --observe-links \\
+    --ofp-tcp-listen-port 6653 \\
     ryu/custom/my_simple_switch_13.py
 EOF
     
     # 创建CC2启动脚本
-    cat > scripts/cross_domain/start_cc2.sh << 'EOF'
+    cat > scripts/cross_domain/start_cc2.sh << EOF
 #!/bin/bash
-cd "$(dirname "$0")/../.."
-export PYTHONPATH=$(pwd):$PYTHONPATH
+cd "$SDN_PATH"
+export PYTHONPATH=\$(pwd):\$PYTHONPATH
 
 # CC2配置
 export CLUSTER_ID=2
@@ -108,13 +108,13 @@ echo "===================================="
 echo "启动CC2集群控制器"
 echo "集群ID: 2"
 echo "OpenFlow端口: 6654"
-echo "AC地址: ${AC_HOST}:${AC_PORT}"
-echo "目标集群: ${DST_CLUSTERS}"
+echo "AC地址: \${AC_HOST}:\${AC_PORT}"
+echo "目标集群: \${DST_CLUSTERS}"
 echo "===================================="
 
-ryu-manager \
-    --observe-links \
-    --ofp-tcp-listen-port 6654 \
+ryu-manager \\
+    --observe-links \\
+    --ofp-tcp-listen-port 6654 \\
     ryu/custom/my_simple_switch_13.py
 EOF
     
@@ -128,7 +128,10 @@ SESSION_NAME="cross_domain_controllers"
 # 检查tmux是否安装
 if ! command -v tmux &> /dev/null; then
     echo "错误: 需要安装tmux"
-    echo "安装命令: sudo apt-get install tmux"
+    echo "请根据您的Linux发行版使用相应的包管理器安装:"
+    echo "  Ubuntu/Debian: sudo apt-get install tmux"
+    echo "  CentOS/RHEL:   sudo yum install tmux"
+    echo "  Fedora:        sudo dnf install tmux"
     exit 1
 fi
 
@@ -202,8 +205,9 @@ setup_cluster1_node() {
     read -p "集群2边界节点IP (用于VXLAN) [默认: 172.168.157.128]: " CLUSTER2_IP
     CLUSTER2_IP=${CLUSTER2_IP:-172.168.157.128}
     
-    # 创建配置脚本
-    cat > /tmp/setup_cluster1_ovs.sh << EOF
+    # 创建配置脚本（使用安全的临时文件）
+    SETUP_SCRIPT=$(mktemp /tmp/setup_cluster1_ovs.XXXXXX.sh)
+    cat > "$SETUP_SCRIPT" << EOF
 #!/bin/bash
 set -e
 
@@ -249,15 +253,15 @@ echo "测试连接:"
 echo "  ping -I veth-h1 10.0.2.20"
 EOF
     
-    chmod +x /tmp/setup_cluster1_ovs.sh
-    print_info "配置脚本已创建: /tmp/setup_cluster1_ovs.sh"
+    chmod +x "$SETUP_SCRIPT"
+    print_info "配置脚本已创建: $SETUP_SCRIPT"
     print_warn "需要root权限执行，是否立即执行? [y/N]"
     read -p "> " execute
     
     if [[ "$execute" =~ ^[Yy]$ ]]; then
-        bash /tmp/setup_cluster1_ovs.sh
+        bash "$SETUP_SCRIPT"
     else
-        print_info "请手动执行: bash /tmp/setup_cluster1_ovs.sh"
+        print_info "请手动执行: bash $SETUP_SCRIPT"
     fi
 }
 
@@ -282,8 +286,9 @@ setup_cluster2_node() {
     read -p "集群1边界节点IP (用于VXLAN) [默认: 192.168.179.133]: " CLUSTER1_IP
     CLUSTER1_IP=${CLUSTER1_IP:-192.168.179.133}
     
-    # 创建配置脚本
-    cat > /tmp/setup_cluster2_ovs.sh << EOF
+    # 创建配置脚本（使用安全的临时文件）
+    SETUP_SCRIPT=$(mktemp /tmp/setup_cluster2_ovs.XXXXXX.sh)
+    cat > "$SETUP_SCRIPT" << EOF
 #!/bin/bash
 set -e
 
@@ -329,15 +334,15 @@ echo "测试连接:"
 echo "  ping -I veth-h2 10.0.1.10"
 EOF
     
-    chmod +x /tmp/setup_cluster2_ovs.sh
-    print_info "配置脚本已创建: /tmp/setup_cluster2_ovs.sh"
+    chmod +x "$SETUP_SCRIPT"
+    print_info "配置脚本已创建: $SETUP_SCRIPT"
     print_warn "需要root权限执行，是否立即执行? [y/N]"
     read -p "> " execute
     
     if [[ "$execute" =~ ^[Yy]$ ]]; then
-        bash /tmp/setup_cluster2_ovs.sh
+        bash "$SETUP_SCRIPT"
     else
-        print_info "请手动执行: bash /tmp/setup_cluster2_ovs.sh"
+        print_info "请手动执行: bash $SETUP_SCRIPT"
     fi
 }
 
