@@ -496,13 +496,11 @@ class MySimpleSwitch13(app_manager.RyuApp):
         """Request cross-cluster path from AC"""
         try:
             src_cluster = self.cluster_id
-            # Parse destination cluster from IP (simplified)
-            dst_parts = dst_ip.split('.')
-            if len(dst_parts) == 4:
-                # Assume 10.0.X.Y format where X is cluster ID
-                dst_cluster = int(dst_parts[2])
-            else:
-                self.logger.warning(f"[CC] Cannot parse cluster ID from IP {dst_ip}")
+            # Use _get_cluster_from_ip to determine destination cluster
+            dst_cluster = self._get_cluster_from_ip(dst_ip)
+            
+            if dst_cluster is None:
+                self.logger.warning(f"[CC] Cannot determine cluster ID for IP {dst_ip}")
                 return
             
             if dst_cluster == src_cluster:

@@ -44,9 +44,33 @@ With ARP proxy enabled:
 
 ### IP to Cluster Mapping
 
-The system uses a simple heuristic for the user's setup:
-- IPs ending in 1-49: Cluster 1
-- IPs ending in 50-255: Cluster 2
+**IMPORTANT**: The default heuristic in `_get_cluster_from_ip()` assumes:
+- Last octet >= 10: Cluster 1 (e.g., 10.10.0.10, 10.10.0.20, etc.)
+- Last octet 1-9: Cluster 2 (e.g., 10.10.0.2, 10.10.0.5, etc.)
+
+**For your specific topology**, you should customize the mapping in `my_simple_switch_13.py`:
+
+```python
+def _get_cluster_from_ip(self, ip_addr):
+    # Explicit mapping for your hosts
+    ip_map = {
+        "10.10.0.10": 1,  # h1 in cluster 1
+        "10.10.0.20": 2,  # h2 in cluster 2  
+        # Add more hosts here
+    }
+    if ip_addr in ip_map:
+        return ip_map[ip_addr]
+    
+    # Fallback heuristic
+    parts = ip_addr.split('.')
+    if len(parts) == 4:
+        last_octet = int(parts[3])
+        if last_octet >= 10:
+            return 1
+        elif last_octet >= 1:
+            return 2
+    return None
+```
 
 For custom mappings, modify `_get_cluster_from_ip()` in `my_simple_switch_13.py`:
 
