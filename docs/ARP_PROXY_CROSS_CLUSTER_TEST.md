@@ -1,29 +1,31 @@
-# Cross-Cluster ARP Proxy Testing Guide
+# Cross-Cluster BIDIRECTIONAL ARP Proxy Testing Guide
 
 ## Overview
 
-This guide explains how to test cross-cluster communication with ARP proxy support in your SDN deployment. The ARP proxy enables hosts in different clusters to communicate by resolving cross-cluster ARP requests automatically.
+This guide explains how to test cross-cluster communication with **bidirectional ARP proxy** support in your SDN deployment. The ARP proxy enables hosts in different clusters to communicate by resolving cross-cluster ARP requests automatically **in both directions**.
 
 ## Architecture
 
 **Setup:**
 - **AC + CC1 + CC2**: All on machine 10.255.0.1/24
 - **OVS1** (10.255.0.2): Cluster 1 boundary switch with host h1 (10.10.0.10)
-- **OVS2** (10.255.1.2): Cluster 2 boundary switch with host h2 (10.10.0.2)
+- **OVS2** (10.255.1.2): Cluster 2 boundary switch with host h2 (10.10.0.20)
 - **Control Plane**: Ad-hoc networks CtrlNet1 (channel 1) and CtrlNet2 (channel 6)
 - **Data Plane**: Ad-hoc network DataNet (channel 11) with GRE tunnels
 
-## How ARP Proxy Works
+## How BIDIRECTIONAL ARP Proxy Works
 
 ### Problem
-When h2 (10.10.0.2) tries to ping h1 (10.10.0.10):
+When h2 (10.10.0.20) tries to ping h1 (10.10.0.10):
 1. h2 sends ARP request: "Who has 10.10.0.10?"
 2. Without ARP proxy, this broadcast stays in cluster 2
 3. h2 never learns h1's MAC address
-4. ICMP packets are never sent
+4. **Even if forward path works, return path fails without bidirectional ARP**
 
-### Solution
-With ARP proxy enabled:
+### Solution - BIDIRECTIONAL ARP Proxy
+With bidirectional ARP proxy enabled:
+
+**FORWARD PATH (C2 → C1):**
 1. **CC2 intercepts cross-cluster ARP requests**
    - Detects that 10.10.0.10 belongs to cluster 1
    - Generates an ARP reply with a **virtual gateway MAC** (02:00:00:00:0c:01)
@@ -32,13 +34,23 @@ With ARP proxy enabled:
    - h2 now knows "10.10.0.10 is at 02:00:00:00:0c:01"
    - h2 sends IP packets with dst_mac=02:00:00:00:0c:01
 
-3. **CC2 installs forwarding flows**
-   - Matches on dst_ip=10.10.0.10 AND dst_mac=02:00:00:00:0c:01
-   - Forwards to boundary port (GRE tunnel to cluster 1)
+3. **CC2 installs BIDIRECTIONAL forwarding flows**
+   - FORWARD: dst_ip=10.10.0.10 → boundary port (to cluster 1)
+   - **RETURN: dst_ip=10.10.0.20 → boundary port (from cluster 1)** ← NEW!
 
-4. **CC1 receives and forwards**
-   - AC has provided routing path [2, 1]
-   - CC1 installs flows to forward to local host h1
+**RETURN PATH (C1 → C2):**
+4. **CC1 also proxies ARPs for remote IPs**
+   - When h1 tries to respond, if it ARPs for 10.10.0.20
+   - CC1 detects 10.10.0.20 belongs to cluster 2
+   - CC1 generates ARP reply with virtual gateway MAC (02:00:00:00:0c:02)
+
+5. **CC1 installs BIDIRECTIONAL flows**
+   - FORWARD: dst_ip=10.10.0.20 → boundary port (to cluster 2)
+   - **RETURN: dst_ip=10.10.0.10 → boundary port (from cluster 2)** ← NEW!
+
+6. **Result: Full bidirectional connectivity**
+   - Both forward (C2→C1) and return (C1→C2) paths work
+   - Ping succeeds with 0% packet loss
 
 ## Configuration
 

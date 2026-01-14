@@ -372,20 +372,35 @@ class MySimpleSwitch13(app_manager.RyuApp):
     
     def _handle_arp_packet(self, msg, dp, pkt, eth, pkt_arp):
         """
-        Handle ARP packets with cross-cluster ARP proxy support.
+        Handle ARP packets with BIDIRECTIONAL cross-cluster ARP proxy support.
         Returns True if ARP was handled (proxied), False if normal processing should continue.
         """
         ofproto = dp.ofproto
         parser = dp.ofproto_parser
         in_port = msg.match['in_port']
         
-        # Only handle ARP requests
+        # Learn from both ARP requests and replies
+        src_ip = pkt_arp.src_ip
+        src_mac = pkt_arp.src_mac
+        
+        # Always learn IP->MAC mapping from any ARP packet
+        if src_ip and src_mac:
+            self._ip_to_mac[src_ip] = src_mac
+            src_cluster_id = self._get_cluster_from_ip(src_ip)
+            if src_cluster_id:
+                self._ip_to_cluster[src_ip] = src_cluster_id
+        
+        # Learn from ARP replies too
+        if pkt_arp.opcode == arp.ARP_REPLY:
+            if pkt_arp.dst_ip and pkt_arp.dst_mac:
+                self._ip_to_mac[pkt_arp.dst_ip] = pkt_arp.dst_mac
+            return False  # Let reply through normally
+        
+        # Only proxy ARP requests
         if pkt_arp.opcode != arp.ARP_REQUEST:
             return False
         
-        src_ip = pkt_arp.src_ip
         dst_ip = pkt_arp.dst_ip
-        src_mac = pkt_arp.src_mac
         
         self.logger.info(f"[CC] ARP Request: who has {dst_ip}? Tell {src_ip} ({src_mac})")
         
@@ -395,7 +410,8 @@ class MySimpleSwitch13(app_manager.RyuApp):
         
         self.logger.info(f"[CC] ARP: src_cluster={src_cluster}, dst_cluster={dst_cluster}, my_cluster={self.cluster_id}")
         
-        # If destination is in another cluster, proxy the ARP
+        # Proxy ARP if destination is in another cluster
+        # This enables BIDIRECTIONAL communication by having each cluster proxy for remote IPs
         if dst_cluster and dst_cluster != self.cluster_id:
             self.logger.info(f"[CC] *** CROSS-CLUSTER ARP DETECTED ***")
             self.logger.info(f"[CC]     ARP Request from cluster {self.cluster_id} for IP {dst_ip} in cluster {dst_cluster}")
@@ -407,11 +423,12 @@ class MySimpleSwitch13(app_manager.RyuApp):
             # Send ARP reply with virtual gateway MAC
             self._send_arp_reply(dp, in_port, gateway_mac, dst_ip, src_mac, src_ip)
             
-            # Also install a flow for future IP packets to use this gateway MAC
+            # Install a flow for future IP packets to use this gateway MAC
             # This directs IP traffic destined to dst_cluster through the gateway
             self._install_cross_cluster_rewrite_flow(dp, dst_ip, dst_cluster, gateway_mac)
             
-            # Request cross-cluster path from AC for actual routing
+            # Request BIDIRECTIONAL cross-cluster path from AC for actual routing
+            # The AC and flow installation will handle both directions
             self._request_cross_cluster_path(src_ip, dst_ip, src_mac, gateway_mac)
             
             return True  # ARP handled, don't flood
@@ -699,7 +716,7 @@ class MySimpleSwitch13(app_manager.RyuApp):
                 break
     
     def _install_flow_from_reply(self, flow_reply):
-        """Install flows based on FlowReply from AC"""
+        """Install flows based on FlowReply from AC - with bidirectional support"""
         try:
             match_fields = dict(flow_reply.match_fields)
             path = list(flow_reply.path)
@@ -721,26 +738,23 @@ class MySimpleSwitch13(app_manager.RyuApp):
             
             self.logger.info(f"[CC] Found segment for cluster {self.cluster_id}")
             
-            # For simplicity, install a basic flow that forwards based on destination IP
-            # In a full implementation, you'd identify the exact boundary switches and ports
+            # Extract IPs
             dst_ip = match_fields.get('dst_ip')
             src_ip = match_fields.get('src_ip')
             
-            if not dst_ip:
-                self.logger.warning(f"[CC] No dst_ip in match fields, cannot install flow")
+            if not dst_ip or not src_ip:
+                self.logger.warning(f"[CC] Missing src_ip or dst_ip in match fields, cannot install flow")
                 return
             
-            # Install flow on all switches in this cluster
+            # Install BIDIRECTIONAL flows: both forward (dst_ip) and return (src_ip) paths
+            # This ensures both clusters can route traffic in both directions
             installed_count = 0
             for dpid, dp in self._datapaths.items():
                 parser = dp.ofproto_parser
                 ofproto = dp.ofproto
                 
-                # Determine output port (for now, use flooding to boundary switches)
-                # In production, you'd calculate the exact port to the boundary switch
+                # Find boundary port connecting to other clusters
                 out_port = ofproto.OFPP_FLOOD
-                
-                # Try to find a boundary switch port
                 for port_no in self._ports.get(dpid, []):
                     # Check if this port connects to another cluster
                     for lk, (lname, lport, pdpid, pport) in self._pending_links.items():
@@ -751,21 +765,38 @@ class MySimpleSwitch13(app_manager.RyuApp):
                     if out_port != ofproto.OFPP_FLOOD:
                         break
                 
-                # Create match based on destination IP
-                match = parser.OFPMatch(eth_type=0x0800, ipv4_dst=dst_ip)
-                actions = [parser.OFPActionOutput(out_port)]
-                
-                # Install flow with idle timeout
-                inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions)]
-                mod = parser.OFPFlowMod(datapath=dp, priority=10,
-                                       match=match, instructions=inst,
+                # Install FORWARD flow (for traffic going TO dst_ip)
+                match_fwd = parser.OFPMatch(eth_type=0x0800, ipv4_dst=dst_ip)
+                actions_fwd = [parser.OFPActionOutput(out_port)]
+                inst_fwd = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions_fwd)]
+                mod_fwd = parser.OFPFlowMod(datapath=dp, priority=10,
+                                       match=match_fwd, instructions=inst_fwd,
                                        idle_timeout=30, hard_timeout=60)
-                dp.send_msg(mod)
+                dp.send_msg(mod_fwd)
+                self.logger.info(f"[CC] ✓ Installed FORWARD flow on switch dpid={dpid:016x}: dst_ip={dst_ip} -> port={out_port}")
                 
-                self.logger.info(f"[CC] ✓ Installed flow on switch dpid={dpid:016x}: dst_ip={dst_ip} -> port={out_port}")
-                installed_count += 1
+                # Install RETURN flow (for traffic going FROM dst_ip back to src_ip)
+                # This is crucial for bidirectional communication
+                match_ret = parser.OFPMatch(eth_type=0x0800, ipv4_dst=src_ip)
+                actions_ret = [parser.OFPActionOutput(out_port)]
+                inst_ret = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions_ret)]
+                mod_ret = parser.OFPFlowMod(datapath=dp, priority=10,
+                                       match=match_ret, instructions=inst_ret,
+                                       idle_timeout=30, hard_timeout=60)
+                dp.send_msg(mod_ret)
+                self.logger.info(f"[CC] ✓ Installed RETURN flow on switch dpid={dpid:016x}: dst_ip={src_ip} -> port={out_port}")
+                
+                installed_count += 2  # Count both forward and return flows
             
-            self.logger.info(f"[CC] ===== FLOW INSTALLATION COMPLETE: {installed_count} switches =====")
+            # Store IP-to-cluster mappings for future ARP proxy decisions
+            src_cluster = self._get_cluster_from_ip(src_ip)
+            dst_cluster = self._get_cluster_from_ip(dst_ip)
+            if src_cluster:
+                self._ip_to_cluster[src_ip] = src_cluster
+            if dst_cluster:
+                self._ip_to_cluster[dst_ip] = dst_cluster
+            
+            self.logger.info(f"[CC] ===== BIDIRECTIONAL FLOW INSTALLATION COMPLETE: {installed_count} flows =====")
                 
         except Exception as e:
             self.logger.error(f"[CC] Error installing flow from reply: {e}", exc_info=True)
