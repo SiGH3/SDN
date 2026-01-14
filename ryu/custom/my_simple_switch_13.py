@@ -60,6 +60,12 @@ class MySimpleSwitch13(app_manager.RyuApp):
         self._local_hosts = set()  # Set of MAC addresses in this cluster
         self._flow_requests_pending = {}  # (src_cluster, dst_cluster) -> timestamp
         
+        # ARP proxy for cross-cluster communication
+        # Virtual gateway MAC for each cluster (format: 02:00:00:00:XX:XX where XX is cluster_id)
+        self._cluster_gateway_macs = {}  # cluster_id -> virtual_mac
+        self._ip_to_mac = {}  # IP -> MAC mapping learned from ARP packets
+        self._ip_to_cluster = {}  # IP -> cluster_id mapping
+        
         # Start background loops
         hub.spawn(self._periodic_advertise_loop)
         hub.spawn(self._heartbeat_loop)
@@ -273,17 +279,23 @@ class MySimpleSwitch13(app_manager.RyuApp):
         elif pkt_arp:
             src_ip = pkt_arp.src_ip
             dst_ip = pkt_arp.dst_ip
+            # Learn IP->MAC mapping from ARP packets
+            self._ip_to_mac[src_ip] = pkt_arp.src_mac
+            # Learn IP->cluster mapping
+            src_cluster_id = self._get_cluster_from_ip(src_ip)
+            if src_cluster_id:
+                self._ip_to_cluster[src_ip] = src_cluster_id
+        
+        # Handle ARP packets specially for cross-cluster communication
+        if pkt_arp:
+            if self._handle_arp_packet(msg, dp, pkt, eth, pkt_arp):
+                # ARP handled (proxied or forwarded), don't continue
+                return
         
         # Check destination cluster
         dst_cluster = None
         if dst_ip:
-            try:
-                dst_parts = dst_ip.split('.')
-                if len(dst_parts) == 4:
-                    # Assume 10.0.X.Y format where X is cluster ID
-                    dst_cluster = int(dst_parts[2])
-            except:
-                pass
+            dst_cluster = self._get_cluster_from_ip(dst_ip)
         
         # Check if destination is local
         out_port = self._mac_to_port.get(dpid, {}).get(dst_mac)
@@ -317,6 +329,168 @@ class MySimpleSwitch13(app_manager.RyuApp):
         out = parser.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id,
                                   in_port=in_port, actions=actions, data=data)
         dp.send_msg(out)
+    
+    def _get_cluster_from_ip(self, ip_addr):
+        """Extract cluster ID from IP address"""
+        try:
+            # First check if we've explicitly learned this IP's cluster
+            if ip_addr in self._ip_to_cluster:
+                return self._ip_to_cluster[ip_addr]
+            
+            parts = ip_addr.split('.')
+            if len(parts) == 4:
+                # For the user's topology: 10.10.0.X format
+                # h1 (10.10.0.10) is in cluster 1
+                # h2 (10.10.0.2) is in cluster 2
+                # Simple heuristic: last octet determines cluster
+                last_octet = int(parts[3])
+                
+                # You can customize this mapping for your specific topology:
+                if last_octet >= 10:  # e.g., .10, .11, .12... are cluster 1
+                    return 1
+                elif last_octet >= 1 and last_octet < 10:  # e.g., .2, .3... are cluster 2
+                    return 2
+                
+                # Alternative: explicit IP mapping (uncomment and customize)
+                # ip_map = {
+                #     "10.10.0.10": 1,  # h1
+                #     "10.10.0.2": 2,   # h2
+                #     # Add more IPs here
+                # }
+                # if ip_addr in ip_map:
+                #     return ip_map[ip_addr]
+        except:
+            pass
+        return None
+    
+    def _get_gateway_mac_for_cluster(self, cluster_id):
+        """Get or create virtual gateway MAC for a cluster"""
+        if cluster_id not in self._cluster_gateway_macs:
+            # Create virtual MAC: 02:00:00:00:0C:XX where XX is cluster_id
+            self._cluster_gateway_macs[cluster_id] = f"02:00:00:00:0c:{cluster_id:02x}"
+        return self._cluster_gateway_macs[cluster_id]
+    
+    def _handle_arp_packet(self, msg, dp, pkt, eth, pkt_arp):
+        """
+        Handle ARP packets with cross-cluster ARP proxy support.
+        Returns True if ARP was handled (proxied), False if normal processing should continue.
+        """
+        ofproto = dp.ofproto
+        parser = dp.ofproto_parser
+        in_port = msg.match['in_port']
+        
+        # Only handle ARP requests
+        if pkt_arp.opcode != arp.ARP_REQUEST:
+            return False
+        
+        src_ip = pkt_arp.src_ip
+        dst_ip = pkt_arp.dst_ip
+        src_mac = pkt_arp.src_mac
+        
+        self.logger.info(f"[CC] ARP Request: who has {dst_ip}? Tell {src_ip} ({src_mac})")
+        
+        # Check if this is a cross-cluster ARP request
+        dst_cluster = self._get_cluster_from_ip(dst_ip)
+        src_cluster = self._get_cluster_from_ip(src_ip)
+        
+        self.logger.info(f"[CC] ARP: src_cluster={src_cluster}, dst_cluster={dst_cluster}, my_cluster={self.cluster_id}")
+        
+        # If destination is in another cluster, proxy the ARP
+        if dst_cluster and dst_cluster != self.cluster_id:
+            self.logger.info(f"[CC] *** CROSS-CLUSTER ARP DETECTED ***")
+            self.logger.info(f"[CC]     ARP Request from cluster {self.cluster_id} for IP {dst_ip} in cluster {dst_cluster}")
+            self.logger.info(f"[CC]     Generating ARP proxy reply with virtual gateway MAC")
+            
+            # Get virtual gateway MAC for the destination cluster
+            gateway_mac = self._get_gateway_mac_for_cluster(dst_cluster)
+            
+            # Send ARP reply with virtual gateway MAC
+            self._send_arp_reply(dp, in_port, gateway_mac, dst_ip, src_mac, src_ip)
+            
+            # Also install a flow for future IP packets to use this gateway MAC
+            # This directs IP traffic destined to dst_cluster through the gateway
+            self._install_cross_cluster_rewrite_flow(dp, dst_ip, dst_cluster, gateway_mac)
+            
+            # Request cross-cluster path from AC for actual routing
+            self._request_cross_cluster_path(src_ip, dst_ip, src_mac, gateway_mac)
+            
+            return True  # ARP handled, don't flood
+        
+        # Local ARP or unknown - let normal flooding handle it
+        return False
+    
+    def _send_arp_reply(self, dp, in_port, src_mac, src_ip, dst_mac, dst_ip):
+        """Send an ARP reply packet"""
+        ofproto = dp.ofproto
+        parser = dp.ofproto_parser
+        
+        # Build ARP reply
+        pkt = packet.Packet()
+        pkt.add_protocol(ethernet.ethernet(
+            ethertype=ether_types.ETH_TYPE_ARP,
+            dst=dst_mac,
+            src=src_mac))
+        pkt.add_protocol(arp.arp(
+            opcode=arp.ARP_REPLY,
+            src_mac=src_mac,
+            src_ip=src_ip,
+            dst_mac=dst_mac,
+            dst_ip=dst_ip))
+        pkt.serialize()
+        
+        # Send packet out
+        actions = [parser.OFPActionOutput(in_port)]
+        out = parser.OFPPacketOut(
+            datapath=dp,
+            buffer_id=ofproto.OFP_NO_BUFFER,
+            in_port=ofproto.OFPP_CONTROLLER,
+            actions=actions,
+            data=pkt.data)
+        dp.send_msg(out)
+        
+        self.logger.info(f"[CC] ✓ Sent ARP Reply: {src_ip} is at {src_mac} to {dst_ip} ({dst_mac}) on port {in_port}")
+    
+    def _install_cross_cluster_rewrite_flow(self, dp, dst_ip, dst_cluster, gateway_mac):
+        """
+        Install a flow that rewrites destination MAC to gateway MAC for cross-cluster traffic.
+        This enables IP packets to be forwarded to the gateway (boundary switch).
+        """
+        parser = dp.ofproto_parser
+        ofproto = dp.ofproto
+        
+        try:
+            # Find boundary port to the destination cluster
+            out_port = ofproto.OFPP_FLOOD
+            for lk, (lname, lport, pdpid, pport) in self._pending_links.items():
+                if lname == self._dpid_name.get(dp.id):
+                    # This is a boundary port - use it
+                    out_port = lport
+                    self.logger.info(f"[CC] Found boundary port {out_port} for cross-cluster traffic to cluster {dst_cluster}")
+                    break
+            
+            # Match on destination IP and gateway MAC
+            match = parser.OFPMatch(
+                eth_type=0x0800,
+                eth_dst=gateway_mac,
+                ipv4_dst=dst_ip)
+            
+            actions = [parser.OFPActionOutput(out_port)]
+            inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions)]
+            
+            # Install flow with higher priority than normal forwarding
+            mod = parser.OFPFlowMod(
+                datapath=dp,
+                priority=20,
+                match=match,
+                instructions=inst,
+                idle_timeout=60,
+                hard_timeout=120)
+            dp.send_msg(mod)
+            
+            self.logger.info(f"[CC] ✓ Installed cross-cluster rewrite flow: dst_ip={dst_ip}, dst_mac={gateway_mac} -> port={out_port}")
+            
+        except Exception as e:
+            self.logger.error(f"[CC] Error installing cross-cluster rewrite flow: {e}", exc_info=True)
     
     def _request_cross_cluster_path(self, src_ip, dst_ip, src_mac, dst_mac):
         """Request cross-cluster path from AC"""
