@@ -66,6 +66,11 @@ class MySimpleSwitch13(app_manager.RyuApp):
         self._ip_to_mac = {}  # IP -> MAC mapping learned from ARP packets
         self._ip_to_cluster = {}  # IP -> cluster_id mapping
         
+        # L3 Routing: Port classification
+        self._gre_ports = {}  # dpid -> set of GRE/tunnel port numbers
+        self._host_ports = {}  # dpid -> set of host-facing port numbers
+        self._switch_mac = {}  # dpid -> MAC address for L3 routing
+        
         # Start background loops
         hub.spawn(self._periodic_advertise_loop)
         hub.spawn(self._heartbeat_loop)
@@ -91,13 +96,37 @@ class MySimpleSwitch13(app_manager.RyuApp):
         dp = ev.msg.datapath
         ofp = dp.ofproto
         ports = []
+        gre_ports = set()
+        host_ports = set()
+        
         for p in ev.msg.body:
             # 过滤保留端口（>= OFPP_MAX）
             if int(p.port_no) >= ofp.OFPP_MAX:
                 continue
             ports.append(int(p.port_no))
+            
+            # Classify ports: GRE tunnels vs host-facing ports
+            port_name = p.name.decode() if isinstance(p.name, bytes) else str(p.name)
+            if port_name.startswith('gre') or port_name.startswith('vxlan') or port_name.startswith('tun'):
+                # GRE/tunnel ports for inter-cluster connectivity
+                gre_ports.add(int(p.port_no))
+                self.logger.info(f"[CC] Identified GRE/tunnel port: {port_name} (port {p.port_no})")
+            elif not port_name.startswith('wlx'):  # Exclude wireless interfaces
+                # Host-facing ports (veth, eth, etc.)
+                host_ports.add(int(p.port_no))
+                self.logger.info(f"[CC] Identified host-facing port: {port_name} (port {p.port_no})")
+        
         self._ports[dp.id] = ports
-        self.logger.info(f"[CC] ports dpid={dp.id} -> {ports}")
+        self._gre_ports[dp.id] = gre_ports
+        self._host_ports[dp.id] = host_ports
+        
+        # Generate a virtual MAC for this switch for L3 routing
+        if dp.id not in self._switch_mac:
+            # Format: 02:00:00:CC:XX:XX where CC=cluster_id, XX:XX=dpid last 2 bytes
+            self._switch_mac[dp.id] = f"02:00:00:{self.cluster_id:02x}:{(dp.id >> 8) & 0xff:02x}:{dp.id & 0xff:02x}"
+            self.logger.info(f"[CC] Generated L3 router MAC for dpid={dp.id:016x}: {self._switch_mac[dp.id]}")
+        
+        self.logger.info(f"[CC] Port classification dpid={dp.id}: total={len(ports)}, GRE={len(gre_ports)}, host={len(host_ports)}")
 
         # NEW: 端口就绪后立即发送一轮 LLDP，避免等待线程导致“卡住”
         for pno in ports:
@@ -469,29 +498,57 @@ class MySimpleSwitch13(app_manager.RyuApp):
     
     def _install_cross_cluster_rewrite_flow(self, dp, dst_ip, dst_cluster, gateway_mac):
         """
-        Install a flow that rewrites destination MAC to gateway MAC for cross-cluster traffic.
-        This enables IP packets to be forwarded to the gateway (boundary switch).
+        Install a flow with proper L3 routing behavior for cross-cluster traffic.
+        Implements:
+        - TTL decrement (L3 router behavior)
+        - Source MAC rewrite to local switch MAC
+        - Destination MAC rewrite to gateway MAC
+        - Forward to GRE boundary port
         """
         parser = dp.ofproto_parser
         ofproto = dp.ofproto
         
         try:
-            # Find boundary port to the destination cluster
-            out_port = ofproto.OFPP_FLOOD
+            # Find GRE boundary port to the destination cluster
+            out_port = None
+            gre_ports = self._gre_ports.get(dp.id, set())
+            
+            # Prefer ports that are in discovered inter-cluster links
             for lk, (lname, lport, pdpid, pport) in self._pending_links.items():
-                if lname == self._dpid_name.get(dp.id):
-                    # This is a boundary port - use it
+                if lname == self._dpid_name.get(dp.id) and lport in gre_ports:
+                    # This is a GRE boundary port with inter-cluster link
                     out_port = lport
-                    self.logger.info(f"[CC] Found boundary port {out_port} for cross-cluster traffic to cluster {dst_cluster}")
+                    self.logger.info(f"[CC] Found GRE boundary port {out_port} for cross-cluster traffic to cluster {dst_cluster}")
                     break
             
-            # Match on destination IP and gateway MAC
+            # Fallback: use any GRE port if available
+            if out_port is None and gre_ports:
+                out_port = list(gre_ports)[0]
+                self.logger.info(f"[CC] Using fallback GRE port {out_port} for cross-cluster traffic to cluster {dst_cluster}")
+            
+            if out_port is None:
+                self.logger.warning(f"[CC] No GRE boundary port found for dpid={dp.id:016x}, cannot install cross-cluster flow")
+                return
+            
+            # Get switch MAC for source rewriting
+            switch_mac = self._switch_mac.get(dp.id, f"02:00:00:{self.cluster_id:02x}:00:00")
+            
+            # Match on destination IP and gateway MAC (from ARP proxy)
             match = parser.OFPMatch(
                 eth_type=0x0800,
                 eth_dst=gateway_mac,
                 ipv4_dst=dst_ip)
             
-            actions = [parser.OFPActionOutput(out_port)]
+            # L3 Router actions:
+            # 1. Decrement TTL (proper L3 behavior)
+            # 2. Rewrite source MAC to local switch MAC (L3 hop)
+            # 3. Keep destination MAC as gateway (next cluster will rewrite)
+            # 4. Forward to GRE boundary port
+            actions = [
+                parser.OFPActionDecNwTtl(),  # TTL - 1
+                parser.OFPActionSetField(eth_src=switch_mac),  # Rewrite src MAC
+                parser.OFPActionOutput(out_port)
+            ]
             inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions)]
             
             # Install flow with higher priority than normal forwarding
@@ -504,7 +561,7 @@ class MySimpleSwitch13(app_manager.RyuApp):
                 hard_timeout=120)
             dp.send_msg(mod)
             
-            self.logger.info(f"[CC] ✓ Installed cross-cluster rewrite flow: dst_ip={dst_ip}, dst_mac={gateway_mac} -> port={out_port}")
+            self.logger.info(f"[CC] ✓ Installed L3 cross-cluster flow: dst_ip={dst_ip}, dst_mac={gateway_mac} -> TTL-1, src_mac={switch_mac}, port={out_port}")
             
         except Exception as e:
             self.logger.error(f"[CC] Error installing cross-cluster rewrite flow: {e}", exc_info=True)
@@ -716,12 +773,18 @@ class MySimpleSwitch13(app_manager.RyuApp):
                 break
     
     def _install_flow_from_reply(self, flow_reply):
-        """Install flows based on FlowReply from AC - with bidirectional support"""
+        """
+        Install flows based on FlowReply from AC - with proper L3 routing.
+        Implements bidirectional flows with:
+        - TTL decrement
+        - MAC rewriting (src_mac to switch MAC, dst_mac to next-hop)
+        - Proper port selection (GRE for egress, host-facing for ingress)
+        """
         try:
             match_fields = dict(flow_reply.match_fields)
             path = list(flow_reply.path)
             
-            self.logger.info(f"[CC] ===== INSTALLING FLOWS FROM AC REPLY =====")
+            self.logger.info(f"[CC] ===== INSTALLING L3 FLOWS FROM AC REPLY =====")
             self.logger.info(f"[CC]   Path to follow: {path}")
             self.logger.info(f"[CC]   Match fields: {match_fields}")
             
@@ -733,70 +796,166 @@ class MySimpleSwitch13(app_manager.RyuApp):
                     break
             
             if not my_segment:
-                self.logger.warning(f"[CC] No segment for cluster {self.cluster_id} in reply, skipping flow installation")
-                return
+                self.logger.warning(f"[CC] No segment for cluster {self.cluster_id} in reply, installing flows without segment info")
+            else:
+                self.logger.info(f"[CC] Found segment for cluster {self.cluster_id}")
             
-            self.logger.info(f"[CC] Found segment for cluster {self.cluster_id}")
-            
-            # Extract IPs
+            # Extract IPs and MACs
             dst_ip = match_fields.get('dst_ip')
             src_ip = match_fields.get('src_ip')
+            original_src_mac = match_fields.get('src_mac')
+            original_dst_mac = match_fields.get('dst_mac')
             
             if not dst_ip or not src_ip:
                 self.logger.warning(f"[CC] Missing src_ip or dst_ip in match fields, cannot install flow")
                 return
             
-            # Install BIDIRECTIONAL flows: both forward (dst_ip) and return (src_ip) paths
-            # This ensures both clusters can route traffic in both directions
+            # Determine if this is source, intermediate, or destination cluster
+            src_cluster = self._get_cluster_from_ip(src_ip)
+            dst_cluster = self._get_cluster_from_ip(dst_ip)
+            my_cluster = self.cluster_id
+            
+            is_source_cluster = (my_cluster == src_cluster)
+            is_dest_cluster = (my_cluster == dst_cluster)
+            
+            self.logger.info(f"[CC] Cluster role: src={src_cluster}, dst={dst_cluster}, my={my_cluster}, is_source={is_source_cluster}, is_dest={is_dest_cluster}")
+            
+            # Install BIDIRECTIONAL L3 flows on each switch
             installed_count = 0
             for dpid, dp in self._datapaths.items():
                 parser = dp.ofproto_parser
                 ofproto = dp.ofproto
                 
-                # Find boundary port connecting to other clusters
-                out_port = ofproto.OFPP_FLOOD
-                for port_no in self._ports.get(dpid, []):
-                    # Check if this port connects to another cluster
+                switch_mac = self._switch_mac.get(dpid, f"02:00:00:{self.cluster_id:02x}:00:00")
+                gre_ports = self._gre_ports.get(dpid, set())
+                host_ports = self._host_ports.get(dpid, set())
+                
+                # === FORWARD FLOW: traffic going TO dst_ip ===
+                if is_source_cluster or not is_dest_cluster:
+                    # Source or intermediate cluster: forward to GRE port
+                    egress_port = None
                     for lk, (lname, lport, pdpid, pport) in self._pending_links.items():
-                        if lname == self._dpid_name.get(dpid) and lport == port_no:
-                            out_port = port_no
-                            self.logger.info(f"[CC] Found boundary port {out_port} on switch dpid={dpid:016x} for cross-cluster forwarding")
+                        if lname == self._dpid_name.get(dpid) and lport in gre_ports:
+                            egress_port = lport
                             break
-                    if out_port != ofproto.OFPP_FLOOD:
-                        break
+                    if egress_port is None and gre_ports:
+                        egress_port = list(gre_ports)[0]
+                    
+                    if egress_port:
+                        # L3 forward flow: match dst_ip, dec TTL, rewrite MACs, output to GRE
+                        match_fwd = parser.OFPMatch(eth_type=0x0800, ipv4_dst=dst_ip)
+                        gateway_mac = self._get_gateway_mac_for_cluster(dst_cluster)
+                        actions_fwd = [
+                            parser.OFPActionDecNwTtl(),
+                            parser.OFPActionSetField(eth_src=switch_mac),
+                            parser.OFPActionSetField(eth_dst=gateway_mac),
+                            parser.OFPActionOutput(egress_port)
+                        ]
+                        inst_fwd = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions_fwd)]
+                        mod_fwd = parser.OFPFlowMod(datapath=dp, priority=15,
+                                               match=match_fwd, instructions=inst_fwd,
+                                               idle_timeout=30, hard_timeout=60)
+                        dp.send_msg(mod_fwd)
+                        self.logger.info(f"[CC] ✓ Installed L3 FORWARD flow: dst_ip={dst_ip} -> TTL-1, src_mac={switch_mac}, dst_mac={gateway_mac}, port={egress_port}")
+                        installed_count += 1
                 
-                # Install FORWARD flow (for traffic going TO dst_ip)
-                match_fwd = parser.OFPMatch(eth_type=0x0800, ipv4_dst=dst_ip)
-                actions_fwd = [parser.OFPActionOutput(out_port)]
-                inst_fwd = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions_fwd)]
-                mod_fwd = parser.OFPFlowMod(datapath=dp, priority=10,
-                                       match=match_fwd, instructions=inst_fwd,
-                                       idle_timeout=30, hard_timeout=60)
-                dp.send_msg(mod_fwd)
-                self.logger.info(f"[CC] ✓ Installed FORWARD flow on switch dpid={dpid:016x}: dst_ip={dst_ip} -> port={out_port}")
+                elif is_dest_cluster:
+                    # Destination cluster: forward to host port
+                    # Find host port for the destination MAC (learned from ARP)
+                    dst_mac_learned = self._ip_to_mac.get(dst_ip)
+                    ingress_port = None
+                    
+                    if dst_mac_learned and dpid in self._mac_to_port:
+                        ingress_port = self._mac_to_port[dpid].get(dst_mac_learned)
+                    
+                    # Fallback: use any host port
+                    if ingress_port is None and host_ports:
+                        ingress_port = list(host_ports)[0]
+                    
+                    if ingress_port:
+                        # L3 forward to local host: match dst_ip, dec TTL, rewrite dst_MAC to actual host MAC
+                        match_fwd = parser.OFPMatch(eth_type=0x0800, ipv4_dst=dst_ip)
+                        final_dst_mac = dst_mac_learned if dst_mac_learned else "ff:ff:ff:ff:ff:ff"
+                        actions_fwd = [
+                            parser.OFPActionDecNwTtl(),
+                            parser.OFPActionSetField(eth_src=switch_mac),
+                            parser.OFPActionSetField(eth_dst=final_dst_mac),
+                            parser.OFPActionOutput(ingress_port)
+                        ]
+                        inst_fwd = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions_fwd)]
+                        mod_fwd = parser.OFPFlowMod(datapath=dp, priority=15,
+                                               match=match_fwd, instructions=inst_fwd,
+                                               idle_timeout=30, hard_timeout=60)
+                        dp.send_msg(mod_fwd)
+                        self.logger.info(f"[CC] ✓ Installed L3 FORWARD flow to host: dst_ip={dst_ip} -> TTL-1, src_mac={switch_mac}, dst_mac={final_dst_mac}, port={ingress_port}")
+                        installed_count += 1
                 
-                # Install RETURN flow (for traffic going FROM dst_ip back to src_ip)
-                # This is crucial for bidirectional communication
-                match_ret = parser.OFPMatch(eth_type=0x0800, ipv4_dst=src_ip)
-                actions_ret = [parser.OFPActionOutput(out_port)]
-                inst_ret = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions_ret)]
-                mod_ret = parser.OFPFlowMod(datapath=dp, priority=10,
-                                       match=match_ret, instructions=inst_ret,
-                                       idle_timeout=30, hard_timeout=60)
-                dp.send_msg(mod_ret)
-                self.logger.info(f"[CC] ✓ Installed RETURN flow on switch dpid={dpid:016x}: dst_ip={src_ip} -> port={out_port}")
+                # === RETURN FLOW: traffic going back FROM dst_ip TO src_ip ===
+                if is_dest_cluster or not is_source_cluster:
+                    # Destination or intermediate cluster: return to GRE port
+                    egress_port = None
+                    for lk, (lname, lport, pdpid, pport) in self._pending_links.items():
+                        if lname == self._dpid_name.get(dpid) and lport in gre_ports:
+                            egress_port = lport
+                            break
+                    if egress_port is None and gre_ports:
+                        egress_port = list(gre_ports)[0]
+                    
+                    if egress_port:
+                        # L3 return flow: match src_ip (return destination), dec TTL, rewrite MACs, output to GRE
+                        match_ret = parser.OFPMatch(eth_type=0x0800, ipv4_dst=src_ip)
+                        gateway_mac = self._get_gateway_mac_for_cluster(src_cluster)
+                        actions_ret = [
+                            parser.OFPActionDecNwTtl(),
+                            parser.OFPActionSetField(eth_src=switch_mac),
+                            parser.OFPActionSetField(eth_dst=gateway_mac),
+                            parser.OFPActionOutput(egress_port)
+                        ]
+                        inst_ret = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions_ret)]
+                        mod_ret = parser.OFPFlowMod(datapath=dp, priority=15,
+                                               match=match_ret, instructions=inst_ret,
+                                               idle_timeout=30, hard_timeout=60)
+                        dp.send_msg(mod_ret)
+                        self.logger.info(f"[CC] ✓ Installed L3 RETURN flow: dst_ip={src_ip} -> TTL-1, src_mac={switch_mac}, dst_mac={gateway_mac}, port={egress_port}")
+                        installed_count += 1
                 
-                installed_count += 2  # Count both forward and return flows
+                elif is_source_cluster:
+                    # Source cluster: return to host port
+                    src_mac_learned = self._ip_to_mac.get(src_ip)
+                    ingress_port = None
+                    
+                    if src_mac_learned and dpid in self._mac_to_port:
+                        ingress_port = self._mac_to_port[dpid].get(src_mac_learned)
+                    
+                    # Fallback: use any host port
+                    if ingress_port is None and host_ports:
+                        ingress_port = list(host_ports)[0]
+                    
+                    if ingress_port:
+                        # L3 return to local host: match src_ip (as destination), dec TTL, rewrite dst_MAC to actual host MAC
+                        match_ret = parser.OFPMatch(eth_type=0x0800, ipv4_dst=src_ip)
+                        final_dst_mac = src_mac_learned if src_mac_learned else "ff:ff:ff:ff:ff:ff"
+                        actions_ret = [
+                            parser.OFPActionDecNwTtl(),
+                            parser.OFPActionSetField(eth_src=switch_mac),
+                            parser.OFPActionSetField(eth_dst=final_dst_mac),
+                            parser.OFPActionOutput(ingress_port)
+                        ]
+                        inst_ret = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions_ret)]
+                        mod_ret = parser.OFPFlowMod(datapath=dp, priority=15,
+                                               match=match_ret, instructions=inst_ret,
+                                               idle_timeout=30, hard_timeout=60)
+                        dp.send_msg(mod_ret)
+                        self.logger.info(f"[CC] ✓ Installed L3 RETURN flow to host: dst_ip={src_ip} -> TTL-1, src_mac={switch_mac}, dst_mac={final_dst_mac}, port={ingress_port}")
+                        installed_count += 1
             
             # Store IP-to-cluster mappings for future ARP proxy decisions
-            src_cluster = self._get_cluster_from_ip(src_ip)
-            dst_cluster = self._get_cluster_from_ip(dst_ip)
             if src_cluster:
                 self._ip_to_cluster[src_ip] = src_cluster
             if dst_cluster:
                 self._ip_to_cluster[dst_ip] = dst_cluster
             
-            self.logger.info(f"[CC] ===== BIDIRECTIONAL FLOW INSTALLATION COMPLETE: {installed_count} flows =====")
+            self.logger.info(f"[CC] ===== L3 BIDIRECTIONAL FLOW INSTALLATION COMPLETE: {installed_count} flows =====")
                 
         except Exception as e:
             self.logger.error(f"[CC] Error installing flow from reply: {e}", exc_info=True)
