@@ -413,16 +413,26 @@ class MySimpleSwitch13(app_manager.RyuApp):
         src_mac = pkt_arp.src_mac
         
         # Always learn IP->MAC mapping from any ARP packet
+        mac_was_new = False
         if src_ip and src_mac:
+            if src_ip not in self._ip_to_mac:
+                mac_was_new = True
+                self.logger.info(f"[CC] Learned new IP->MAC mapping: {src_ip} -> {src_mac}")
             self._ip_to_mac[src_ip] = src_mac
             src_cluster_id = self._get_cluster_from_ip(src_ip)
             if src_cluster_id:
                 self._ip_to_cluster[src_ip] = src_cluster_id
+            # If this is new MAC learning, update any pending flows
+            if mac_was_new:
+                self._update_flows_for_learned_mac(src_ip, src_mac, dp.id)
         
         # Learn from ARP replies too
         if pkt_arp.opcode == arp.ARP_REPLY:
             if pkt_arp.dst_ip and pkt_arp.dst_mac:
+                if pkt_arp.dst_ip not in self._ip_to_mac:
+                    self.logger.info(f"[CC] Learned IP->MAC from ARP reply: {pkt_arp.dst_ip} -> {pkt_arp.dst_mac}")
                 self._ip_to_mac[pkt_arp.dst_ip] = pkt_arp.dst_mac
+                self._update_flows_for_learned_mac(pkt_arp.dst_ip, pkt_arp.dst_mac, dp.id)
             return False  # Let reply through normally
         
         # Only proxy ARP requests
@@ -877,18 +887,14 @@ class MySimpleSwitch13(app_manager.RyuApp):
                     if dst_mac_learned and dpid in self._mac_to_port:
                         ingress_port = self._mac_to_port[dpid].get(dst_mac_learned)
                     
-                    # Fallback: use any host port
-                    if ingress_port is None and host_ports:
-                        ingress_port = list(host_ports)[0]
-                    
-                    if ingress_port:
+                    # Only install flow if we have learned the destination MAC
+                    if dst_mac_learned and ingress_port:
                         # L3 forward to local host: match dst_ip, dec TTL, rewrite dst_MAC to actual host MAC
                         match_fwd = parser.OFPMatch(eth_type=0x0800, ipv4_dst=dst_ip)
-                        final_dst_mac = dst_mac_learned if dst_mac_learned else "ff:ff:ff:ff:ff:ff"
                         actions_fwd = [
                             parser.OFPActionDecNwTtl(),
                             parser.OFPActionSetField(eth_src=switch_mac),
-                            parser.OFPActionSetField(eth_dst=final_dst_mac),
+                            parser.OFPActionSetField(eth_dst=dst_mac_learned),
                             parser.OFPActionOutput(ingress_port)
                         ]
                         inst_fwd = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions_fwd)]
@@ -896,7 +902,18 @@ class MySimpleSwitch13(app_manager.RyuApp):
                                                match=match_fwd, instructions=inst_fwd,
                                                idle_timeout=30, hard_timeout=60)
                         dp.send_msg(mod_fwd)
-                        self.logger.info(f"[CC] ✓ Installed L3 FORWARD flow to host: dst_ip={dst_ip} -> TTL-1, src_mac={switch_mac}, dst_mac={final_dst_mac}, port={ingress_port}")
+                        self.logger.info(f"[CC] ✓ Installed L3 FORWARD flow to host: dst_ip={dst_ip} -> TTL-1, src_mac={switch_mac}, dst_mac={dst_mac_learned}, port={ingress_port}")
+                        installed_count += 1
+                    else:
+                        # Install table-miss-like flow to send to controller for MAC resolution
+                        match_fwd = parser.OFPMatch(eth_type=0x0800, ipv4_dst=dst_ip)
+                        actions_fwd = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER)]
+                        inst_fwd = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions_fwd)]
+                        mod_fwd = parser.OFPFlowMod(datapath=dp, priority=10,  # Lower priority
+                                               match=match_fwd, instructions=inst_fwd,
+                                               idle_timeout=5)
+                        dp.send_msg(mod_fwd)
+                        self.logger.info(f"[CC] ⚠ Installed L3 FORWARD flow to CONTROLLER (MAC not learned): dst_ip={dst_ip}, will learn from ARP")
                         installed_count += 1
                 
                 # === RETURN FLOW: traffic going back FROM dst_ip TO src_ip ===
@@ -936,18 +953,14 @@ class MySimpleSwitch13(app_manager.RyuApp):
                     if src_mac_learned and dpid in self._mac_to_port:
                         ingress_port = self._mac_to_port[dpid].get(src_mac_learned)
                     
-                    # Fallback: use any host port
-                    if ingress_port is None and host_ports:
-                        ingress_port = list(host_ports)[0]
-                    
-                    if ingress_port:
+                    # Only install flow if we have learned the source MAC
+                    if src_mac_learned and ingress_port:
                         # L3 return to local host: match src_ip (as destination), dec TTL, rewrite dst_MAC to actual host MAC
                         match_ret = parser.OFPMatch(eth_type=0x0800, ipv4_dst=src_ip)
-                        final_dst_mac = src_mac_learned if src_mac_learned else "ff:ff:ff:ff:ff:ff"
                         actions_ret = [
                             parser.OFPActionDecNwTtl(),
                             parser.OFPActionSetField(eth_src=switch_mac),
-                            parser.OFPActionSetField(eth_dst=final_dst_mac),
+                            parser.OFPActionSetField(eth_dst=src_mac_learned),
                             parser.OFPActionOutput(ingress_port)
                         ]
                         inst_ret = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions_ret)]
@@ -955,7 +968,18 @@ class MySimpleSwitch13(app_manager.RyuApp):
                                                match=match_ret, instructions=inst_ret,
                                                idle_timeout=30, hard_timeout=60)
                         dp.send_msg(mod_ret)
-                        self.logger.info(f"[CC] ✓ Installed L3 RETURN flow to host: dst_ip={src_ip} -> TTL-1, src_mac={switch_mac}, dst_mac={final_dst_mac}, port={ingress_port}")
+                        self.logger.info(f"[CC] ✓ Installed L3 RETURN flow to host: dst_ip={src_ip} -> TTL-1, src_mac={switch_mac}, dst_mac={src_mac_learned}, port={ingress_port}")
+                        installed_count += 1
+                    else:
+                        # Install table-miss-like flow to send to controller for MAC resolution
+                        match_ret = parser.OFPMatch(eth_type=0x0800, ipv4_dst=src_ip)
+                        actions_ret = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER)]
+                        inst_ret = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions_ret)]
+                        mod_ret = parser.OFPFlowMod(datapath=dp, priority=10,  # Lower priority
+                                               match=match_ret, instructions=inst_ret,
+                                               idle_timeout=5)
+                        dp.send_msg(mod_ret)
+                        self.logger.info(f"[CC] ⚠ Installed L3 RETURN flow to CONTROLLER (MAC not learned): dst_ip={src_ip}, will learn from ARP")
                         installed_count += 1
             
             # Store IP-to-cluster mappings for future ARP proxy decisions
@@ -968,6 +992,46 @@ class MySimpleSwitch13(app_manager.RyuApp):
                 
         except Exception as e:
             self.logger.error(f"[CC] Error installing flow from reply: {e}", exc_info=True)
+    
+    def _update_flows_for_learned_mac(self, ip_addr, mac_addr, dpid):
+        """
+        Update flows when a new MAC address is learned.
+        This upgrades controller flows to proper L3 forwarding flows.
+        """
+        try:
+            if dpid not in self._datapaths:
+                return
+            
+            dp = self._datapaths[dpid]
+            parser = dp.ofproto_parser
+            ofproto = dp.ofproto
+            
+            # Get port for this MAC
+            port = self._mac_to_port.get(dpid, {}).get(mac_addr)
+            if not port:
+                self.logger.debug(f"[CC] No port learned for MAC {mac_addr} yet, will update later")
+                return
+            
+            switch_mac = self._switch_mac.get(dpid, f"02:00:00:{self.cluster_id:02x}:00:00")
+            
+            # Install proper L3 flow now that we know the MAC
+            # This will override the lower-priority controller flow
+            match = parser.OFPMatch(eth_type=0x0800, ipv4_dst=ip_addr)
+            actions = [
+                parser.OFPActionDecNwTtl(),
+                parser.OFPActionSetField(eth_src=switch_mac),
+                parser.OFPActionSetField(eth_dst=mac_addr),
+                parser.OFPActionOutput(port)
+            ]
+            inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions)]
+            mod = parser.OFPFlowMod(datapath=dp, priority=15,  # Higher than controller flow
+                                   match=match, instructions=inst,
+                                   idle_timeout=30, hard_timeout=60)
+            dp.send_msg(mod)
+            self.logger.info(f"[CC] ✓ Updated L3 flow for learned MAC: dst_ip={ip_addr} -> dst_mac={mac_addr}, port={port}")
+        except Exception as e:
+            self.logger.warning(f"[CC] Error updating flow for learned MAC: {e}")
+
 
     def _lldp_tx_loop(self, dpid: int):
         burst = 3
