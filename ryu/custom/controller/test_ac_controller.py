@@ -244,44 +244,59 @@ def _compute_and_distribute_flow(src: int, dst: int, match_fields: dict):
     if not path:
         return False
 
-    # Build segments
+    # Build segments for intermediate hops
     segments = None
     try:
         segments = STATE.build_segments(path)
     except Exception:
-        # 简化：仅通知路径，源域下发一段
-        segments = [{"cluster_id": src, "ingress_border": "", "egress_border": "", "tunnel_id": ""}]
+        # Fallback: empty segments for all clusters
+        segments = []
 
+    # Send FlowReply to ALL clusters in the path, not just those with segments
+    # Each cluster needs to know the full path to install appropriate flows
     ok_any = False
-    for seg in segments:
-        cid = int(seg["cluster_id"])
-        
+    for cid in path:
         # Get connection from SYNC
         conn = SYNC.get_connection(cid)
         if not conn:
-            print(f"[AC] No active connection for cluster {cid}, skip segment")
+            print(f"[AC] No active connection for cluster {cid}, skip")
             continue
         
         # Check if cluster is active
         if not SYNC.is_cluster_active(cid):
-            print(f"[AC] Cluster {cid} is inactive, skip segment")
+            print(f"[AC] Cluster {cid} is inactive, skip")
             continue
         
         reply = message_pb2.FlowReply()
         reply.path.extend([str(x) for x in path])
         reply.match_fields.update(match_fields)
+        
+        # Find segment for this cluster (if exists)
+        seg_for_cluster = None
+        for seg in segments:
+            if int(seg["cluster_id"]) == cid:
+                seg_for_cluster = seg
+                break
+        
+        # Add segment info (empty if no specific segment)
         new_seg = reply.segments.add()
         new_seg.cluster_id = cid
-        new_seg.ingress_border = seg.get("ingress_border", "")
-        new_seg.egress_border = seg.get("egress_border", "")
-        new_seg.tunnel_id = seg.get("tunnel_id", "")
+        if seg_for_cluster:
+            new_seg.ingress_border = seg_for_cluster.get("ingress_border", "")
+            new_seg.egress_border = seg_for_cluster.get("egress_border", "")
+            new_seg.tunnel_id = seg_for_cluster.get("tunnel_id", "")
+        else:
+            new_seg.ingress_border = ""
+            new_seg.egress_border = ""
+            new_seg.tunnel_id = ""
+        
         try:
             data = message.encode_envelope(message_pb2.Envelope.FLOW_REPLY, reply)
             network.send_message(conn, data)
-            print(f"[AC] FLOW_REPLY segment sent to cluster {cid} for path {path}")
+            print(f"[AC] FLOW_REPLY sent to cluster {cid} for path {path}")
             ok_any = True
         except Exception as e:
-            print(f"[AC] Send segment to cluster {cid} failed: {e}")
+            print(f"[AC] Send to cluster {cid} failed: {e}")
             # 连接可能失效，移除映射，留待下一次重算
             _unregister_conn(conn)
     return ok_any
