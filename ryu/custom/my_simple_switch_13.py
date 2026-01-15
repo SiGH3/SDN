@@ -810,15 +810,24 @@ class MySimpleSwitch13(app_manager.RyuApp):
                 self.logger.warning(f"[CC] Missing src_ip or dst_ip in match fields, cannot install flow")
                 return
             
-            # Determine if this is source, intermediate, or destination cluster
-            src_cluster = self._get_cluster_from_ip(src_ip)
-            dst_cluster = self._get_cluster_from_ip(dst_ip)
+            # Determine cluster role based on path from AC (NOT from IP addresses!)
+            # path = [src_cluster, intermediate_clusters..., dst_cluster]
+            if not path or len(path) < 2:
+                self.logger.warning(f"[CC] Invalid path {path}, cannot determine cluster role")
+                return
+            
+            # Convert path elements to integers for comparison
+            path_int = [int(c) for c in path]
+            src_cluster = path_int[0]
+            dst_cluster = path_int[-1]
             my_cluster = self.cluster_id
             
+            # Determine role: source, intermediate, or destination
             is_source_cluster = (my_cluster == src_cluster)
             is_dest_cluster = (my_cluster == dst_cluster)
+            is_intermediate_cluster = (my_cluster in path_int[1:-1]) if len(path_int) > 2 else False
             
-            self.logger.info(f"[CC] Cluster role: src={src_cluster}, dst={dst_cluster}, my={my_cluster}, is_source={is_source_cluster}, is_dest={is_dest_cluster}")
+            self.logger.info(f"[CC] Cluster role: src={src_cluster}, dst={dst_cluster}, my={my_cluster}, is_source={is_source_cluster}, is_dest={is_dest_cluster}, is_intermediate={is_intermediate_cluster}")
             
             # Install BIDIRECTIONAL L3 flows on each switch
             installed_count = 0
