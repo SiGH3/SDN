@@ -108,7 +108,7 @@ class MySimpleSwitch13(app_manager.RyuApp):
             
             # Classify ports: GRE tunnels vs host-facing ports
             port_name = p.name.decode() if isinstance(p.name, bytes) else str(p.name)
-            port_mac = ':'.join(['%02x' % b for b in p.hw_addr])  # Get port hardware address
+            port_mac = p.hw_addr  # Already in text format (e.g., '00:11:22:33:44:55')
             
             if port_name.startswith('gre') or port_name.startswith('vxlan') or port_name.startswith('tun'):
                 # GRE/tunnel ports for inter-cluster connectivity
