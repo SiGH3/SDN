@@ -69,6 +69,7 @@ class MySimpleSwitch13(app_manager.RyuApp):
         # L3 Routing: Port classification
         self._gre_ports = {}  # dpid -> set of GRE/tunnel port numbers
         self._host_ports = {}  # dpid -> set of host-facing port numbers
+        self._boundary_ports = {}  # dpid -> set of boundary port numbers (LLDP-discovered inter-cluster)
         self._switch_mac = {}  # dpid -> MAC address for L3 routing
         
         # Start background loops
@@ -252,6 +253,13 @@ class MySimpleSwitch13(app_manager.RyuApp):
         lk = self._make_link_key(dp.id, local_port, peer_dpid, peer_port)
         # 记录到缓存，供周期性重发
         self._pending_links[lk] = (local_name, int(local_port), int(peer_dpid), int(peer_port))
+        
+        # NEW: Track this as a boundary port for inter-cluster forwarding
+        # Since peer_dpid is not in _local_dpids, this is an inter-cluster link
+        if dp.id not in self._boundary_ports:
+            self._boundary_ports[dp.id] = set()
+        self._boundary_ports[dp.id].add(int(local_port))
+        self.logger.info(f"[CC] ✓ Identified boundary port: port {local_port} on dpid={dp.id:016x} connects to remote cluster")
 
         # 首次强制上报；后续按时间窗抑制
         now = time.time()
@@ -569,25 +577,23 @@ class MySimpleSwitch13(app_manager.RyuApp):
         ofproto = dp.ofproto
         
         try:
-            # Find GRE boundary port to the destination cluster
+            # Find boundary port to the destination cluster
+            # Priority 1: Use LLDP-discovered boundary ports (topology-aware)
             out_port = None
+            boundary_ports = self._boundary_ports.get(dp.id, set())
             gre_ports = self._gre_ports.get(dp.id, set())
             
-            # Prefer ports that are in discovered inter-cluster links
-            for lk, (lname, lport, pdpid, pport) in self._pending_links.items():
-                if lname == self._dpid_name.get(dp.id) and lport in gre_ports:
-                    # This is a GRE boundary port with inter-cluster link
-                    out_port = lport
-                    self.logger.info(f"[CC] Found GRE boundary port {out_port} for cross-cluster traffic to cluster {dst_cluster}")
-                    break
-            
-            # Fallback: use any GRE port if available
-            if out_port is None and gre_ports:
+            if boundary_ports:
+                # Use LLDP-discovered inter-cluster port
+                out_port = list(boundary_ports)[0]
+                self.logger.info(f"[CC] Found boundary port {out_port} from LLDP topology for cross-cluster traffic to cluster {dst_cluster}")
+            elif gre_ports:
+                # Fallback: use GRE-named ports if available
                 out_port = list(gre_ports)[0]
-                self.logger.info(f"[CC] Using fallback GRE port {out_port} for cross-cluster traffic to cluster {dst_cluster}")
+                self.logger.info(f"[CC] Using GRE-named port {out_port} for cross-cluster traffic to cluster {dst_cluster}")
             
             if out_port is None:
-                self.logger.warning(f"[CC] No GRE boundary port found for dpid={dp.id:016x}, cannot install cross-cluster flow")
+                self.logger.warning(f"[CC] No boundary port found for dpid={dp.id:016x} (checked {len(boundary_ports)} boundary, {len(gre_ports)} GRE ports), cannot install cross-cluster flow")
                 return
             
             # Get switch MAC for source rewriting
