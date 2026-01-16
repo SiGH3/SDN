@@ -108,6 +108,8 @@ class MySimpleSwitch13(app_manager.RyuApp):
             
             # Classify ports: GRE tunnels vs host-facing ports
             port_name = p.name.decode() if isinstance(p.name, bytes) else str(p.name)
+            port_mac = ':'.join(['%02x' % b for b in p.hw_addr])  # Get port hardware address
+            
             if port_name.startswith('gre') or port_name.startswith('vxlan') or port_name.startswith('tun'):
                 # GRE/tunnel ports for inter-cluster connectivity
                 gre_ports.add(int(p.port_no))
@@ -115,7 +117,13 @@ class MySimpleSwitch13(app_manager.RyuApp):
             elif not port_name.startswith('wlx'):  # Exclude wireless interfaces
                 # Host-facing ports (veth, eth, etc.)
                 host_ports.add(int(p.port_no))
-                self.logger.info(f"[CC] Identified host-facing port: {port_name} (port {p.port_no})")
+                self.logger.info(f"[CC] Identified host-facing port: {port_name} (port {p.port_no}, MAC {port_mac})")
+                
+                # NEW: Pre-populate MAC learning with port MAC address
+                # In "one host one OVS" architecture, use port MAC as host MAC
+                # This eliminates the need for ARP learning or waiting for host packets
+                self._mac_to_port[(dp.id, port_mac)] = int(p.port_no)
+                self.logger.info(f"[CC] Pre-learned host MAC from port: {port_mac} -> dpid={dp.id:016x} port={p.port_no}")
         
         self._ports[dp.id] = ports
         self._gre_ports[dp.id] = gre_ports
