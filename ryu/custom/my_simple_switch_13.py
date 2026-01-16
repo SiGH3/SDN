@@ -506,6 +506,56 @@ class MySimpleSwitch13(app_manager.RyuApp):
         
         self.logger.info(f"[CC] ✓ Sent ARP Reply: {src_ip} is at {src_mac} to {dst_ip} ({dst_mac}) on port {in_port}")
     
+    def _send_arp_request(self, dp, target_ip, ports=None):
+        """
+        Send ARP request to discover MAC address for a target IP.
+        This is used by destination clusters to actively probe for host MACs.
+        """
+        ofproto = dp.ofproto
+        parser = dp.ofproto_parser
+        
+        # Use switch's virtual MAC as source
+        switch_mac = self._switch_mac.get(dp.id, f"02:00:00:{self.cluster_id:02x}:00:00")
+        
+        # Use a virtual gateway IP for the source (cluster-specific)
+        # Format: 10.10.X.254 where X is cluster ID
+        src_ip = f"10.10.{self.cluster_id}.254"
+        
+        # Build ARP request
+        pkt = packet.Packet()
+        pkt.add_protocol(ethernet.ethernet(
+            ethertype=ether_types.ETH_TYPE_ARP,
+            dst="ff:ff:ff:ff:ff:ff",  # Broadcast
+            src=switch_mac))
+        pkt.add_protocol(arp.arp(
+            opcode=arp.ARP_REQUEST,
+            src_mac=switch_mac,
+            src_ip=src_ip,
+            dst_mac="00:00:00:00:00:00",  # Unknown
+            dst_ip=target_ip))
+        pkt.serialize()
+        
+        # Send to all host-facing ports (not GRE ports)
+        if ports is None:
+            ports = self._host_ports.get(dp.id, set())
+        
+        if not ports:
+            self.logger.warning(f"[CC] Cannot send ARP request for {target_ip}: no host ports available")
+            return
+        
+        # Send packet out to all host-facing ports
+        for port_no in ports:
+            actions = [parser.OFPActionOutput(port_no)]
+            out = parser.OFPPacketOut(
+                datapath=dp,
+                buffer_id=ofproto.OFP_NO_BUFFER,
+                in_port=ofproto.OFPP_CONTROLLER,
+                actions=actions,
+                data=pkt.data)
+            dp.send_msg(out)
+        
+        self.logger.info(f"[CC] ✓ Sent ARP Request: who has {target_ip}? (broadcasted to {len(ports)} host ports)")
+    
     def _install_cross_cluster_rewrite_flow(self, dp, dst_ip, dst_cluster, gateway_mac):
         """
         Install a flow with proper L3 routing behavior for cross-cluster traffic.
@@ -905,6 +955,10 @@ class MySimpleSwitch13(app_manager.RyuApp):
                         self.logger.info(f"[CC] ✓ Installed L3 FORWARD flow to host: dst_ip={dst_ip} -> TTL-1, src_mac={switch_mac}, dst_mac={dst_mac_learned}, port={ingress_port}")
                         installed_count += 1
                     else:
+                        # MAC not learned - trigger active ARP probing
+                        self.logger.info(f"[CC] ⚠ MAC not learned for {dst_ip}, sending ARP request to discover host")
+                        self._send_arp_request(dp, dst_ip, host_ports)
+                        
                         # Install table-miss-like flow to send to controller for MAC resolution
                         match_fwd = parser.OFPMatch(eth_type=0x0800, ipv4_dst=dst_ip)
                         actions_fwd = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER)]
@@ -913,7 +967,7 @@ class MySimpleSwitch13(app_manager.RyuApp):
                                                match=match_fwd, instructions=inst_fwd,
                                                idle_timeout=5)
                         dp.send_msg(mod_fwd)
-                        self.logger.info(f"[CC] ⚠ Installed L3 FORWARD flow to CONTROLLER (MAC not learned): dst_ip={dst_ip}, will learn from ARP")
+                        self.logger.info(f"[CC] ⚠ Installed L3 FORWARD flow to CONTROLLER (MAC not learned): dst_ip={dst_ip}, will upgrade after ARP response")
                         installed_count += 1
                 
                 # === RETURN FLOW: traffic going back FROM dst_ip TO src_ip ===
@@ -971,6 +1025,10 @@ class MySimpleSwitch13(app_manager.RyuApp):
                         self.logger.info(f"[CC] ✓ Installed L3 RETURN flow to host: dst_ip={src_ip} -> TTL-1, src_mac={switch_mac}, dst_mac={src_mac_learned}, port={ingress_port}")
                         installed_count += 1
                     else:
+                        # MAC not learned - trigger active ARP probing
+                        self.logger.info(f"[CC] ⚠ MAC not learned for {src_ip}, sending ARP request to discover host")
+                        self._send_arp_request(dp, src_ip, host_ports)
+                        
                         # Install table-miss-like flow to send to controller for MAC resolution
                         match_ret = parser.OFPMatch(eth_type=0x0800, ipv4_dst=src_ip)
                         actions_ret = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER)]
@@ -979,7 +1037,7 @@ class MySimpleSwitch13(app_manager.RyuApp):
                                                match=match_ret, instructions=inst_ret,
                                                idle_timeout=5)
                         dp.send_msg(mod_ret)
-                        self.logger.info(f"[CC] ⚠ Installed L3 RETURN flow to CONTROLLER (MAC not learned): dst_ip={src_ip}, will learn from ARP")
+                        self.logger.info(f"[CC] ⚠ Installed L3 RETURN flow to CONTROLLER (MAC not learned): dst_ip={src_ip}, will upgrade after ARP response")
                         installed_count += 1
             
             # Store IP-to-cluster mappings for future ARP proxy decisions
