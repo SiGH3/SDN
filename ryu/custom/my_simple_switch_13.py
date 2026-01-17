@@ -124,6 +124,23 @@ class MySimpleSwitch13(app_manager.RyuApp):
                 # This eliminates the need for ARP learning or waiting for host packets
                 self._mac_to_port[(dp.id, port_mac)] = int(p.port_no)
                 self.logger.info(f"[CC] Pre-learned host MAC from port: {port_mac} -> dpid={dp.id:016x} port={p.port_no}")
+                
+                # NEW: Infer host IP from port name and pre-populate IP→MAC mapping
+                # Port naming convention: br<cluster>-h<N> → IP: 10.10.0.<cluster*10 + N>
+                # Examples: br1-h1 → 10.10.0.10, br2-h1 → 10.10.0.20
+                try:
+                    import re
+                    match = re.match(r'br(\d+)-h(\d+)', port_name)
+                    if match:
+                        port_cluster = int(match.group(1))
+                        host_num = int(match.group(2))
+                        # Infer IP: 10.10.0.<cluster*10 + host_num>
+                        inferred_ip = f"10.10.0.{port_cluster * 10 + host_num}"
+                        self._ip_to_mac[inferred_ip] = port_mac
+                        self._ip_to_cluster[inferred_ip] = port_cluster
+                        self.logger.info(f"[CC] Inferred host IP from port name {port_name}: {inferred_ip} → MAC {port_mac}")
+                except Exception as e:
+                    self.logger.debug(f"[CC] Could not infer IP from port name {port_name}: {e}")
         
         self._ports[dp.id] = ports
         self._gre_ports[dp.id] = gre_ports
