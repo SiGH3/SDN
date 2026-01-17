@@ -961,12 +961,12 @@ class MySimpleSwitch13(app_manager.RyuApp):
                 
                 elif is_dest_cluster:
                     # Destination cluster: forward to host port
-                    # Find host port for the destination MAC (learned from ARP)
+                    # Find host port for the destination MAC (pre-learned from port discovery)
                     dst_mac_learned = self._ip_to_mac.get(dst_ip)
                     ingress_port = None
                     
-                    if dst_mac_learned and dpid in self._mac_to_port:
-                        ingress_port = self._mac_to_port[dpid].get(dst_mac_learned)
+                    if dst_mac_learned:
+                        ingress_port = self._mac_to_port.get((dpid, dst_mac_learned))
                     
                     # Only install flow if we have learned the destination MAC
                     if dst_mac_learned and ingress_port:
@@ -1035,8 +1035,8 @@ class MySimpleSwitch13(app_manager.RyuApp):
                     src_mac_learned = self._ip_to_mac.get(src_ip)
                     ingress_port = None
                     
-                    if src_mac_learned and dpid in self._mac_to_port:
-                        ingress_port = self._mac_to_port[dpid].get(src_mac_learned)
+                    if src_mac_learned:
+                        ingress_port = self._mac_to_port.get((dpid, src_mac_learned))
                     
                     # Only install flow if we have learned the source MAC
                     if src_mac_learned and ingress_port:
