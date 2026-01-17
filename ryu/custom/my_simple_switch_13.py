@@ -72,9 +72,74 @@ class MySimpleSwitch13(app_manager.RyuApp):
         self._boundary_ports = {}  # dpid -> set of boundary port numbers (LLDP-discovered inter-cluster)
         self._switch_mac = {}  # dpid -> MAC address for L3 routing
         
+        # Static host configuration for IP->MAC->Port binding
+        # Format: { "ip": {"dpid": dpid, "port": port_no, "mac": "xx:xx:xx:xx:xx:xx"} }
+        self._static_hosts = {}
+        self._load_static_host_config()
+        
         # Start background loops
         hub.spawn(self._periodic_advertise_loop)
         hub.spawn(self._heartbeat_loop)
+
+    def _load_static_host_config(self):
+        """
+        Load static host configuration from environment or file.
+        Format: IP1=MAC1:PORT1:DPID1,IP2=MAC2:PORT2:DPID2,...
+        Example: 10.10.0.10=02:da:d9:38:7b:b1:9:13754232326308,10.10.0.20=ca:0b:5e:87:28:d5:2:66274971307137
+        
+        Alternatively, can load from JSON file specified by HOST_CONFIG_FILE env var.
+        """
+        import os
+        import json
+        
+        # Try loading from file first
+        config_file = os.getenv("HOST_CONFIG_FILE")
+        if config_file and os.path.exists(config_file):
+            try:
+                with open(config_file, 'r') as f:
+                    config = json.load(f)
+                    for ip, host_info in config.items():
+                        self._static_hosts[ip] = {
+                            "mac": host_info["mac"],
+                            "port": int(host_info["port"]),
+                            "dpid": int(host_info["dpid"], 16) if isinstance(host_info["dpid"], str) else int(host_info["dpid"])
+                        }
+                        cluster_id = self._get_cluster_from_ip(ip)
+                        self._ip_to_cluster[ip] = cluster_id
+                        self.logger.info(f"[CC] Loaded static host from file: {ip} -> MAC={host_info['mac']}, port={host_info['port']}, dpid={host_info['dpid']}, cluster={cluster_id}")
+                return
+            except Exception as e:
+                self.logger.warning(f"[CC] Failed to load host config from file {config_file}: {e}")
+        
+        # Fall back to environment variable
+        host_config_str = os.getenv("STATIC_HOSTS", "")
+        if not host_config_str:
+            self.logger.info("[CC] No static host configuration provided (STATIC_HOSTS or HOST_CONFIG_FILE)")
+            return
+        
+        # Parse format: IP1=MAC1:PORT1:DPID1,IP2=MAC2:PORT2:DPID2
+        for entry in host_config_str.split(','):
+            entry = entry.strip()
+            if not entry:
+                continue
+            try:
+                ip, rest = entry.split('=')
+                parts = rest.split(':')
+                # MAC is first 6 parts (xx:xx:xx:xx:xx:xx), then port, then dpid
+                mac = ':'.join(parts[0:6])
+                port = int(parts[6])
+                dpid = int(parts[7])
+                
+                self._static_hosts[ip] = {
+                    "mac": mac,
+                    "port": port,
+                    "dpid": dpid
+                }
+                cluster_id = self._get_cluster_from_ip(ip)
+                self._ip_to_cluster[ip] = cluster_id
+                self.logger.info(f"[CC] Loaded static host from env: {ip} -> MAC={mac}, port={port}, dpid={dpid}, cluster={cluster_id}")
+            except Exception as e:
+                self.logger.error(f"[CC] Failed to parse static host entry '{entry}': {e}")
 
     @set_ev_cls(ofp_event.EventOFPStateChange, [MAIN_DISPATCHER, DEAD_DISPATCHER])
     def _state_change_handler(self, ev):
@@ -124,6 +189,16 @@ class MySimpleSwitch13(app_manager.RyuApp):
                 # This eliminates the need for ARP learning or waiting for host packets
                 self._mac_to_port[(dp.id, port_mac)] = int(p.port_no)
                 self.logger.info(f"[CC] Pre-learned host MAC from port: {port_mac} -> dpid={dp.id:016x} port={p.port_no}")
+                
+                # NEW: Check static host configuration and pre-populate IP->MAC bindings
+                for ip, host_info in self._static_hosts.items():
+                    if host_info["dpid"] == dp.id and host_info["port"] == int(p.port_no):
+                        # Found matching static configuration
+                        self._ip_to_mac[ip] = host_info["mac"]
+                        self._mac_to_port[(dp.id, host_info["mac"])] = int(p.port_no)
+                        cluster_id = self._get_cluster_from_ip(ip)
+                        self._ip_to_cluster[ip] = cluster_id
+                        self.logger.info(f"[CC] ✓ Static host binding activated: IP={ip} -> MAC={host_info['mac']}, port={p.port_no}, cluster={cluster_id}")
                 
                 # Note: IP-to-cluster mapping is now determined from the IP address itself
                 # in _get_cluster_from_ip() method based on IP ranges:
