@@ -401,6 +401,27 @@ class MySimpleSwitch13(app_manager.RyuApp):
         if pkt_ipv4:
             src_ip = pkt_ipv4.src
             dst_ip = pkt_ipv4.dst
+            
+            # REACTIVE HOST DISCOVERY: Learn IP→MAC binding from first IPv4 packet
+            # This is the SDN-native approach - controller actively discovers hosts from traffic
+            # Check if this is from a host-facing port (not a boundary/inter-cluster port)
+            is_boundary = (dp.id in self._boundary_ports and 
+                          in_port in self._boundary_ports[dp.id])
+            
+            if not is_boundary and src_ip and src_ip not in self._ip_to_mac:
+                # First time seeing this IP - reactive discovery!
+                self._ip_to_mac[src_ip] = src_mac
+                # Use tuple key for MAC→Port mapping
+                self._mac_to_port[(dp.id, src_mac)] = in_port
+                
+                # Determine cluster from IP range (10-19=cluster1, 20-29=cluster2, etc.)
+                cluster_id = self._get_cluster_from_ip(src_ip)
+                if cluster_id:
+                    self._ip_to_cluster[src_ip] = cluster_id
+                
+                self.logger.info(f"[CC] ✓ Reactive host discovery: {src_ip} -> {src_mac}, "
+                               f"port={in_port}, dpid={dp.id:016x}, cluster={cluster_id}")
+        
         elif pkt_arp:
             src_ip = pkt_arp.src_ip
             dst_ip = pkt_arp.dst_ip
