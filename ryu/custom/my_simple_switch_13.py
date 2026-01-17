@@ -125,22 +125,10 @@ class MySimpleSwitch13(app_manager.RyuApp):
                 self._mac_to_port[(dp.id, port_mac)] = int(p.port_no)
                 self.logger.info(f"[CC] Pre-learned host MAC from port: {port_mac} -> dpid={dp.id:016x} port={p.port_no}")
                 
-                # NEW: Infer host IP from port name and pre-populate IP→MAC mapping
-                # Port naming convention: br<cluster>-h<N> → IP: 10.10.0.<cluster*10 + N>
-                # Examples: br1-h1 → 10.10.0.10, br2-h1 → 10.10.0.20
-                try:
-                    import re
-                    match = re.match(r'br(\d+)-h(\d+)', port_name)
-                    if match:
-                        port_cluster = int(match.group(1))
-                        host_num = int(match.group(2))
-                        # Infer IP: 10.10.0.<cluster*10 + host_num>
-                        inferred_ip = f"10.10.0.{port_cluster * 10 + host_num}"
-                        self._ip_to_mac[inferred_ip] = port_mac
-                        self._ip_to_cluster[inferred_ip] = port_cluster
-                        self.logger.info(f"[CC] Inferred host IP from port name {port_name}: {inferred_ip} → MAC {port_mac}")
-                except Exception as e:
-                    self.logger.debug(f"[CC] Could not infer IP from port name {port_name}: {e}")
+                # Note: IP-to-cluster mapping is now determined from the IP address itself
+                # in _get_cluster_from_ip() method based on IP ranges:
+                # 10.10.0.10-19 = cluster 1, 10.10.0.20-29 = cluster 2, etc.
+                # Port naming (br1-h1, br2-h2, etc.) is flexible and not used for IP inference
         
         self._ports[dp.id] = ports
         self._gre_ports[dp.id] = gre_ports
@@ -393,7 +381,16 @@ class MySimpleSwitch13(app_manager.RyuApp):
         dp.send_msg(out)
     
     def _get_cluster_from_ip(self, ip_addr):
-        """Extract cluster ID from IP address"""
+        """Extract cluster ID from IP address based on last octet ranges
+        
+        IP Range -> Cluster mapping:
+        10.10.0.10-19 -> cluster 1
+        10.10.0.20-29 -> cluster 2
+        10.10.0.30-39 -> cluster 3
+        etc.
+        
+        Formula: cluster_id = last_octet // 10
+        """
         try:
             # First check if we've explicitly learned this IP's cluster
             if ip_addr in self._ip_to_cluster:
@@ -401,26 +398,14 @@ class MySimpleSwitch13(app_manager.RyuApp):
             
             parts = ip_addr.split('.')
             if len(parts) == 4:
-                # For the user's topology: 10.10.0.X format
-                # h1 (10.10.0.10) is in cluster 1
-                # h2 (10.10.0.2) is in cluster 2
-                # Simple heuristic: last octet determines cluster
+                # Extract last octet: 10.10.0.X
                 last_octet = int(parts[3])
                 
-                # You can customize this mapping for your specific topology:
-                if last_octet >= 10:  # e.g., .10, .11, .12... are cluster 1
-                    return 1
-                elif last_octet >= 1 and last_octet < 10:  # e.g., .2, .3... are cluster 2
-                    return 2
+                # Determine cluster from last octet: 10-19=cluster1, 20-29=cluster2, etc.
+                cluster_id = last_octet // 10
                 
-                # Alternative: explicit IP mapping (uncomment and customize)
-                # ip_map = {
-                #     "10.10.0.10": 1,  # h1
-                #     "10.10.0.2": 2,   # h2
-                #     # Add more IPs here
-                # }
-                # if ip_addr in ip_map:
-                #     return ip_map[ip_addr]
+                if cluster_id > 0:  # Valid cluster IDs start from 1
+                    return cluster_id
         except:
             pass
         return None
