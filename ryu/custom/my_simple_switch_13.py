@@ -1092,13 +1092,15 @@ class MySimpleSwitch13(app_manager.RyuApp):
                             egress_port = list(gre_ports)[0]
                     
                     if egress_port:
-                        # L3 forward flow: match dst_ip, dec TTL, rewrite MACs, output to GRE
+                        # L3 forward flow: match dst_ip, dec TTL, rewrite MACs to next-hop router, output to boundary port
                         match_fwd = parser.OFPMatch(eth_type=0x0800, ipv4_dst=dst_ip)
-                        gateway_mac = self._get_gateway_mac_for_cluster(dst_cluster)
+                        # Use actual router MAC of destination cluster for L3 hop-by-hop routing
+                        # Format: 02:00:00:CLUSTER:DPID_SUFFIX
+                        dst_router_mac = f"02:00:00:{dst_cluster:02x}:00:00"  # Generic router MAC for dst cluster
                         actions_fwd = [
                             parser.OFPActionDecNwTtl(),
                             parser.OFPActionSetField(eth_src=switch_mac),
-                            parser.OFPActionSetField(eth_dst=gateway_mac),
+                            parser.OFPActionSetField(eth_dst=dst_router_mac),  # Next-hop router MAC, not gateway MAC!
                             parser.OFPActionOutput(egress_port)
                         ]
                         inst_fwd = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions_fwd)]
@@ -1106,7 +1108,7 @@ class MySimpleSwitch13(app_manager.RyuApp):
                                                match=match_fwd, instructions=inst_fwd,
                                                idle_timeout=30, hard_timeout=60)
                         dp.send_msg(mod_fwd)
-                        self.logger.info(f"[CC] ✓ Installed L3 FORWARD flow: dst_ip={dst_ip} -> TTL-1, src_mac={switch_mac}, dst_mac={gateway_mac}, port={egress_port}")
+                        self.logger.info(f"[CC] ✓ Installed L3 FORWARD flow: dst_ip={dst_ip} -> TTL-1, src_mac={switch_mac}, dst_mac={dst_router_mac} (next-hop router), port={egress_port}")
                         installed_count += 1
                 
                 elif is_dest_cluster:
@@ -1157,23 +1159,38 @@ class MySimpleSwitch13(app_manager.RyuApp):
                 
                 # === RETURN FLOW: traffic going back FROM dst_ip TO src_ip ===
                 if is_dest_cluster or not is_source_cluster:
-                    # Destination or intermediate cluster: return to GRE port
+                    # Destination or intermediate cluster: return to boundary/inter-cluster port
+                    boundary_ports = self._boundary_ports.get(dpid, set())
                     egress_port = None
+                    
+                    # Try to find boundary port from LLDP-discovered links first
                     for lk, (lname, lport, pdpid, pport) in self._pending_links.items():
-                        if lname == self._dpid_name.get(dpid) and lport in gre_ports:
+                        if lname == self._dpid_name.get(dpid) and lport in boundary_ports:
                             egress_port = lport
                             break
-                    if egress_port is None and gre_ports:
-                        egress_port = list(gre_ports)[0]
+                    
+                    # Fallback: use any boundary port
+                    if egress_port is None and boundary_ports:
+                        egress_port = list(boundary_ports)[0]
+                    
+                    # Fallback: use GRE ports if no boundary ports found
+                    if egress_port is None:
+                        for lk, (lname, lport, pdpid, pport) in self._pending_links.items():
+                            if lname == self._dpid_name.get(dpid) and lport in gre_ports:
+                                egress_port = lport
+                                break
+                        if egress_port is None and gre_ports:
+                            egress_port = list(gre_ports)[0]
                     
                     if egress_port:
-                        # L3 return flow: match src_ip (return destination), dec TTL, rewrite MACs, output to GRE
+                        # L3 return flow: match dst_ip (return to source), dec TTL, rewrite MACs to next-hop router, output to boundary port
                         match_ret = parser.OFPMatch(eth_type=0x0800, ipv4_dst=src_ip)
-                        gateway_mac = self._get_gateway_mac_for_cluster(src_cluster)
+                        # Use actual router MAC of source cluster for L3 hop-by-hop routing
+                        src_router_mac = f"02:00:00:{src_cluster:02x}:00:00"  # Generic router MAC for src cluster
                         actions_ret = [
                             parser.OFPActionDecNwTtl(),
                             parser.OFPActionSetField(eth_src=switch_mac),
-                            parser.OFPActionSetField(eth_dst=gateway_mac),
+                            parser.OFPActionSetField(eth_dst=src_router_mac),  # Next-hop router MAC, not gateway MAC!
                             parser.OFPActionOutput(egress_port)
                         ]
                         inst_ret = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions_ret)]
@@ -1181,7 +1198,7 @@ class MySimpleSwitch13(app_manager.RyuApp):
                                                match=match_ret, instructions=inst_ret,
                                                idle_timeout=30, hard_timeout=60)
                         dp.send_msg(mod_ret)
-                        self.logger.info(f"[CC] ✓ Installed L3 RETURN flow: dst_ip={src_ip} -> TTL-1, src_mac={switch_mac}, dst_mac={gateway_mac}, port={egress_port}")
+                        self.logger.info(f"[CC] ✓ Installed L3 RETURN flow: dst_ip={src_ip} -> TTL-1, src_mac={switch_mac}, dst_mac={src_router_mac} (next-hop router), port={egress_port}")
                         installed_count += 1
                 
                 elif is_source_cluster:
