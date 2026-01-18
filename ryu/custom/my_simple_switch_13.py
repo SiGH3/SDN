@@ -1068,14 +1068,28 @@ class MySimpleSwitch13(app_manager.RyuApp):
                 
                 # === FORWARD FLOW: traffic going TO dst_ip ===
                 if is_source_cluster or not is_dest_cluster:
-                    # Source or intermediate cluster: forward to GRE port
+                    # Source or intermediate cluster: forward to boundary/inter-cluster port
+                    boundary_ports = self._boundary_ports.get(dpid, set())
                     egress_port = None
+                    
+                    # Try to find boundary port from LLDP-discovered links first
                     for lk, (lname, lport, pdpid, pport) in self._pending_links.items():
-                        if lname == self._dpid_name.get(dpid) and lport in gre_ports:
+                        if lname == self._dpid_name.get(dpid) and lport in boundary_ports:
                             egress_port = lport
                             break
-                    if egress_port is None and gre_ports:
-                        egress_port = list(gre_ports)[0]
+                    
+                    # Fallback: use any boundary port
+                    if egress_port is None and boundary_ports:
+                        egress_port = list(boundary_ports)[0]
+                    
+                    # Fallback: use GRE ports if no boundary ports found
+                    if egress_port is None:
+                        for lk, (lname, lport, pdpid, pport) in self._pending_links.items():
+                            if lname == self._dpid_name.get(dpid) and lport in gre_ports:
+                                egress_port = lport
+                                break
+                        if egress_port is None and gre_ports:
+                            egress_port = list(gre_ports)[0]
                     
                     if egress_port:
                         # L3 forward flow: match dst_ip, dec TTL, rewrite MACs, output to GRE
