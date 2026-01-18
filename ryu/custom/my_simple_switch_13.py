@@ -83,38 +83,93 @@ class MySimpleSwitch13(app_manager.RyuApp):
 
     def _load_static_host_config(self):
         """
-        Load static host configuration from environment or file.
-        Format: IP1=MAC1:PORT1:DPID1,IP2=MAC2:PORT2:DPID2,...
-        Example: 10.10.0.10=02:da:d9:38:7b:b1:9:13754232326308,10.10.0.20=ca:0b:5e:87:28:d5:2:66274971307137
+        Load static host configuration from per-cluster file, custom file, or environment variable.
         
-        Alternatively, can load from JSON file specified by HOST_CONFIG_FILE env var.
+        Priority order:
+        1. Per-cluster config file: config/hosts_cluster<N>.json (automatic for this cluster)
+        2. Custom file specified by HOST_CONFIG_FILE environment variable
+        3. Inline configuration from STATIC_HOSTS environment variable
+        
+        Per-cluster file format (JSON):
+        {
+          "cluster_id": 1,
+          "hosts": {
+            "10.10.0.10": {
+              "mac": "02:da:d9:38:7b:b1",
+              "port": 9,
+              "dpid": "0x0c826821c8a4",
+              "description": "Host h1 on OVS1"
+            }
+          }
+        }
+        
+        Environment variable format: IP1=MAC1:PORT1:DPID1,IP2=MAC2:PORT2:DPID2,...
+        Example: 10.10.0.10=02:da:d9:38:7b:b1:9:13754232326308
         """
         import os
         import json
         
-        # Try loading from file first
+        # Priority 1: Try per-cluster config file (automatic based on cluster_id)
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        repo_root = os.path.dirname(os.path.dirname(script_dir))  # Go up from ryu/custom/ to repo root
+        per_cluster_file = os.path.join(repo_root, 'config', f'hosts_cluster{self.cluster_id}.json')
+        
+        if os.path.exists(per_cluster_file):
+            try:
+                with open(per_cluster_file, 'r') as f:
+                    config = json.load(f)
+                    config_cluster_id = config.get("cluster_id")
+                    
+                    # Validate cluster ID matches
+                    if config_cluster_id != self.cluster_id:
+                        self.logger.warning(f"[CC] Cluster ID mismatch in {per_cluster_file}: file has {config_cluster_id}, controller is {self.cluster_id}")
+                    
+                    hosts = config.get("hosts", {})
+                    for ip, host_info in hosts.items():
+                        self._static_hosts[ip] = {
+                            "mac": host_info["mac"],
+                            "port": int(host_info["port"]),
+                            "dpid": int(host_info["dpid"], 16) if isinstance(host_info["dpid"], str) and host_info["dpid"].startswith("0x") else int(host_info["dpid"])
+                        }
+                        cluster_id = self._get_cluster_from_ip(ip)
+                        self._ip_to_cluster[ip] = cluster_id
+                        desc = host_info.get("description", "")
+                        self.logger.info(f"[CC] Loaded static host from cluster config: {ip} -> MAC={host_info['mac']}, port={host_info['port']}, dpid={host_info['dpid']}, cluster={cluster_id} ({desc})")
+                self.logger.info(f"[CC] Successfully loaded {len(hosts)} host(s) from {per_cluster_file}")
+                return
+            except Exception as e:
+                self.logger.warning(f"[CC] Failed to load per-cluster config from {per_cluster_file}: {e}")
+        else:
+            self.logger.info(f"[CC] Per-cluster config file not found: {per_cluster_file}")
+        
+        # Priority 2: Try custom config file from HOST_CONFIG_FILE env var
         config_file = os.getenv("HOST_CONFIG_FILE")
         if config_file and os.path.exists(config_file):
             try:
                 with open(config_file, 'r') as f:
                     config = json.load(f)
-                    for ip, host_info in config.items():
+                    # Support both formats: with "hosts" key or direct IP mapping
+                    hosts_dict = config.get("hosts", config) if "hosts" in config else config
+                    for ip, host_info in hosts_dict.items():
+                        if not isinstance(host_info, dict):
+                            continue
                         self._static_hosts[ip] = {
                             "mac": host_info["mac"],
                             "port": int(host_info["port"]),
-                            "dpid": int(host_info["dpid"], 16) if isinstance(host_info["dpid"], str) else int(host_info["dpid"])
+                            "dpid": int(host_info["dpid"], 16) if isinstance(host_info["dpid"], str) and host_info["dpid"].startswith("0x") else int(host_info["dpid"])
                         }
                         cluster_id = self._get_cluster_from_ip(ip)
                         self._ip_to_cluster[ip] = cluster_id
-                        self.logger.info(f"[CC] Loaded static host from file: {ip} -> MAC={host_info['mac']}, port={host_info['port']}, dpid={host_info['dpid']}, cluster={cluster_id}")
+                        self.logger.info(f"[CC] Loaded static host from custom file: {ip} -> MAC={host_info['mac']}, port={host_info['port']}, dpid={host_info['dpid']}, cluster={cluster_id}")
+                self.logger.info(f"[CC] Successfully loaded host config from {config_file}")
                 return
             except Exception as e:
                 self.logger.warning(f"[CC] Failed to load host config from file {config_file}: {e}")
         
-        # Fall back to environment variable
+        # Priority 3: Fall back to environment variable (inline format)
         host_config_str = os.getenv("STATIC_HOSTS", "")
         if not host_config_str:
-            self.logger.info("[CC] No static host configuration provided (STATIC_HOSTS or HOST_CONFIG_FILE)")
+            self.logger.info("[CC] No static host configuration provided. Will use reactive discovery.")
             return
         
         # Parse format: IP1=MAC1:PORT1:DPID1,IP2=MAC2:PORT2:DPID2
