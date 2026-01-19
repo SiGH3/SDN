@@ -832,8 +832,8 @@ class MySimpleSwitch13(app_manager.RyuApp):
             req.dst_cluster = dst_cluster
             req.match_fields['src_ip'] = src_ip
             req.match_fields['dst_ip'] = dst_ip
-            req.match_fields['src_mac'] = src_mac
-            req.match_fields['dst_mac'] = dst_mac
+            # Note: MAC addresses are NOT sent to AC - AC only handles L3 routing
+            # Each CC determines appropriate MACs locally based on its role
             
             envelope = message_pb2.Envelope()
             envelope.type = message_pb2.Envelope.FLOW_REQUEST
@@ -1027,11 +1027,9 @@ class MySimpleSwitch13(app_manager.RyuApp):
             else:
                 self.logger.info(f"[CC] Found segment for cluster {self.cluster_id}")
             
-            # Extract IPs and MACs
+            # Extract IPs (MACs are determined locally by each CC based on its role)
             dst_ip = match_fields.get('dst_ip')
             src_ip = match_fields.get('src_ip')
-            original_src_mac = match_fields.get('src_mac')
-            original_dst_mac = match_fields.get('dst_mac')
             
             if not dst_ip or not src_ip:
                 self.logger.warning(f"[CC] Missing src_ip or dst_ip in match fields, cannot install flow")
