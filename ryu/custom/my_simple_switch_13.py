@@ -1054,8 +1054,9 @@ class MySimpleSwitch13(app_manager.RyuApp):
                     # Only install flow if we have learned the destination MAC
                     if dst_mac_learned and ingress_port:
                         # L3 forward to local host: match BOTH router MAC and dst_ip for proper L3 routing
-                        # Packets arriving from inter-cluster have dst_mac=router_mac, we rewrite to host MAC
-                        router_mac = self._switch_mac.get(dpid, f"02:00:00:{self.cluster_id:02x}:00:00")
+                        # Packets arriving from inter-cluster have dst_mac=generic_router_mac, we rewrite to host MAC
+                        # Use GENERIC router MAC format (02:00:00:CLUSTER:00:00) to match packets from inter-cluster
+                        router_mac = f"02:00:00:{self.cluster_id:02x}:00:00"
                         match_fwd = parser.OFPMatch(eth_type=0x0800, eth_dst=router_mac, ipv4_dst=dst_ip)
                         actions_fwd = [
                             parser.OFPActionDecNwTtl(),
@@ -1076,8 +1077,9 @@ class MySimpleSwitch13(app_manager.RyuApp):
                         self._send_arp_request(dp, dst_ip, host_ports)
                         
                         # Install table-miss-like flow to send to controller for MAC resolution
-                        # Match on router MAC and dst_ip for proper L3 routing
-                        router_mac = self._switch_mac.get(dpid, f"02:00:00:{self.cluster_id:02x}:00:00")
+                        # Match on GENERIC router MAC and dst_ip for proper L3 routing
+                        # Use generic format to match packets from inter-cluster
+                        router_mac = f"02:00:00:{self.cluster_id:02x}:00:00"
                         match_fwd = parser.OFPMatch(eth_type=0x0800, eth_dst=router_mac, ipv4_dst=dst_ip)
                         actions_fwd = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER)]
                         inst_fwd = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions_fwd)]
