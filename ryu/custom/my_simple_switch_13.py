@@ -1209,10 +1209,10 @@ class MySimpleSwitch13(app_manager.RyuApp):
                     
                     # Only install flow if we have learned the source MAC
                     if src_mac_learned and ingress_port:
-                        # L3 return to local host: match BOTH router MAC and dst_ip for proper L3 routing
-                        # Packets arriving from inter-cluster have dst_mac=router_mac, we rewrite to host MAC
-                        router_mac = self._switch_mac.get(dpid, f"02:00:00:{self.cluster_id:02x}:00:00")
-                        match_ret = parser.OFPMatch(eth_type=0x0800, eth_dst=router_mac, ipv4_dst=src_ip)
+                        # L3 return to local host: match ONLY on dst_ip
+                        # Packets arriving from inter-cluster may have generic router MAC (02:00:00:CLUSTER:00:00)
+                        # set by previous hop, so we match only on L3 (dst_ip)
+                        match_ret = parser.OFPMatch(eth_type=0x0800, ipv4_dst=src_ip)
                         actions_ret = [
                             parser.OFPActionDecNwTtl(),
                             parser.OFPActionSetField(eth_src=switch_mac),
@@ -1220,11 +1220,11 @@ class MySimpleSwitch13(app_manager.RyuApp):
                             parser.OFPActionOutput(ingress_port)
                         ]
                         inst_ret = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions_ret)]
-                        mod_ret = parser.OFPFlowMod(datapath=dp, priority=20,  # Higher priority for L3 routing
+                        mod_ret = parser.OFPFlowMod(datapath=dp, priority=15,  # Match dst_ip only
                                                match=match_ret, instructions=inst_ret,
                                                idle_timeout=30, hard_timeout=60)
                         dp.send_msg(mod_ret)
-                        self.logger.info(f"[CC] ✓ Installed L3 RETURN flow to host: eth_dst={router_mac}, dst_ip={src_ip} -> TTL-1, src_mac={switch_mac}, dst_mac={src_mac_learned}, port={ingress_port}")
+                        self.logger.info(f"[CC] ✓ Installed L3 RETURN flow to host: dst_ip={src_ip} -> TTL-1, src_mac={switch_mac}, dst_mac={src_mac_learned}, port={ingress_port}")
                         installed_count += 1
                     else:
                         # MAC not learned - trigger active ARP probing
@@ -1232,16 +1232,15 @@ class MySimpleSwitch13(app_manager.RyuApp):
                         self._send_arp_request(dp, src_ip, host_ports)
                         
                         # Install table-miss-like flow to send to controller for MAC resolution
-                        # Match on router MAC and dst_ip for proper L3 routing
-                        router_mac = self._switch_mac.get(dpid, f"02:00:00:{self.cluster_id:02x}:00:00")
-                        match_ret = parser.OFPMatch(eth_type=0x0800, eth_dst=router_mac, ipv4_dst=src_ip)
+                        # Match ONLY on dst_ip (packets arrive with generic router MAC from previous hop)
+                        match_ret = parser.OFPMatch(eth_type=0x0800, ipv4_dst=src_ip)
                         actions_ret = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER)]
                         inst_ret = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions_ret)]
                         mod_ret = parser.OFPFlowMod(datapath=dp, priority=15,  # Medium priority
                                                match=match_ret, instructions=inst_ret,
                                                idle_timeout=5)
                         dp.send_msg(mod_ret)
-                        self.logger.info(f"[CC] ⚠ Installed L3 RETURN flow to CONTROLLER (MAC not learned): eth_dst={router_mac}, dst_ip={src_ip}, will upgrade after ARP response")
+                        self.logger.info(f"[CC] ⚠ Installed L3 RETURN flow to CONTROLLER (MAC not learned): dst_ip={src_ip}, will upgrade after ARP response")
                         installed_count += 1
             
             # Store IP-to-cluster mappings for future ARP proxy decisions
