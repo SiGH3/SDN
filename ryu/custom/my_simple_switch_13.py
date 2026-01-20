@@ -631,9 +631,10 @@ class MySimpleSwitch13(app_manager.RyuApp):
             # Send ARP reply with virtual gateway MAC
             self._send_arp_reply(dp, in_port, gateway_mac, dst_ip, src_mac, src_ip)
             
-            # Install a flow for future IP packets to use this gateway MAC
-            # This directs IP traffic destined to dst_cluster through the gateway
-            self._install_cross_cluster_rewrite_flow(dp, dst_ip, dst_cluster, gateway_mac)
+            # NOTE: Do NOT install forwarding flows during ARP stage!
+            # ARP stage only resolves "who should I send to" (gateway MAC)
+            # Actual forwarding flows are installed by AC during flow installation phase
+            # Installing flows here would create conflicts with AC's L3 routing flows
             
             # Request BIDIRECTIONAL cross-cluster path from AC for actual routing
             # The AC and flow installation will handle both directions
@@ -724,74 +725,6 @@ class MySimpleSwitch13(app_manager.RyuApp):
             dp.send_msg(out)
         
         self.logger.info(f"[CC] ✓ Sent ARP Request: who has {target_ip}? (broadcasted to {len(ports)} host ports)")
-    
-    def _install_cross_cluster_rewrite_flow(self, dp, dst_ip, dst_cluster, gateway_mac):
-        """
-        Install a flow with proper L3 routing behavior for cross-cluster traffic.
-        Implements:
-        - TTL decrement (L3 router behavior)
-        - Source MAC rewrite to local switch MAC
-        - Destination MAC rewrite to gateway MAC
-        - Forward to GRE boundary port
-        """
-        parser = dp.ofproto_parser
-        ofproto = dp.ofproto
-        
-        try:
-            # Find boundary port to the destination cluster
-            # Priority 1: Use LLDP-discovered boundary ports (topology-aware)
-            out_port = None
-            boundary_ports = self._boundary_ports.get(dp.id, set())
-            gre_ports = self._gre_ports.get(dp.id, set())
-            
-            if boundary_ports:
-                # Use LLDP-discovered inter-cluster port
-                out_port = list(boundary_ports)[0]
-                self.logger.info(f"[CC] Found boundary port {out_port} from LLDP topology for cross-cluster traffic to cluster {dst_cluster}")
-            elif gre_ports:
-                # Fallback: use GRE-named ports if available
-                out_port = list(gre_ports)[0]
-                self.logger.info(f"[CC] Using GRE-named port {out_port} for cross-cluster traffic to cluster {dst_cluster}")
-            
-            if out_port is None:
-                self.logger.warning(f"[CC] No boundary port found for dpid={dp.id:016x} (checked {len(boundary_ports)} boundary, {len(gre_ports)} GRE ports), cannot install cross-cluster flow")
-                return
-            
-            # Get switch MAC for source rewriting
-            switch_mac = self._switch_mac.get(dp.id, f"02:00:00:{self.cluster_id:02x}:00:00")
-            
-            # Match on destination IP and gateway MAC (from ARP proxy)
-            match = parser.OFPMatch(
-                eth_type=0x0800,
-                eth_dst=gateway_mac,
-                ipv4_dst=dst_ip)
-            
-            # L3 Router actions:
-            # 1. Decrement TTL (proper L3 behavior)
-            # 2. Rewrite source MAC to local switch MAC (L3 hop)
-            # 3. Keep destination MAC as gateway (next cluster will rewrite)
-            # 4. Forward to GRE boundary port
-            actions = [
-                parser.OFPActionDecNwTtl(),  # TTL - 1
-                parser.OFPActionSetField(eth_src=switch_mac),  # Rewrite src MAC
-                parser.OFPActionOutput(out_port)
-            ]
-            inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions)]
-            
-            # Install flow with higher priority than normal forwarding
-            mod = parser.OFPFlowMod(
-                datapath=dp,
-                priority=20,
-                match=match,
-                instructions=inst,
-                idle_timeout=60,
-                hard_timeout=120)
-            dp.send_msg(mod)
-            
-            self.logger.info(f"[CC] ✓ Installed L3 cross-cluster flow: dst_ip={dst_ip}, dst_mac={gateway_mac} -> TTL-1, src_mac={switch_mac}, port={out_port}")
-            
-        except Exception as e:
-            self.logger.error(f"[CC] Error installing cross-cluster rewrite flow: {e}", exc_info=True)
     
     def _request_cross_cluster_path(self, src_ip, dst_ip, src_mac, dst_mac):
         """Request cross-cluster path from AC"""
