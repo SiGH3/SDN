@@ -1053,11 +1053,10 @@ class MySimpleSwitch13(app_manager.RyuApp):
                     
                     # Only install flow if we have learned the destination MAC
                     if dst_mac_learned and ingress_port:
-                        # L3 forward to local host: match BOTH router MAC and dst_ip for proper L3 routing
-                        # Packets arriving from inter-cluster have dst_mac=generic_router_mac, we rewrite to host MAC
-                        # Use GENERIC router MAC format (02:00:00:CLUSTER:00:00) to match packets from inter-cluster
-                        router_mac = f"02:00:00:{self.cluster_id:02x}:00:00"
-                        match_fwd = parser.OFPMatch(eth_type=0x0800, eth_dst=router_mac, ipv4_dst=dst_ip)
+                        # L3 forward to local host: match ONLY on dst_ip (standard L3 routing)
+                        # Do NOT match on eth_dst - MAC is hop-by-hop and can vary across inter-cluster links
+                        # This is proper L3 SDN routing: match on IP (L3), rewrite MAC (L2) for local delivery
+                        match_fwd = parser.OFPMatch(eth_type=0x0800, ipv4_dst=dst_ip)
                         actions_fwd = [
                             parser.OFPActionDecNwTtl(),
                             parser.OFPActionSetField(eth_src=switch_mac),
@@ -1069,7 +1068,7 @@ class MySimpleSwitch13(app_manager.RyuApp):
                                                match=match_fwd, instructions=inst_fwd,
                                                idle_timeout=30, hard_timeout=60)
                         dp.send_msg(mod_fwd)
-                        self.logger.info(f"[CC] ✓ Installed L3 FORWARD flow to host: eth_dst={router_mac}, dst_ip={dst_ip} -> TTL-1, src_mac={switch_mac}, dst_mac={dst_mac_learned}, port={ingress_port}")
+                        self.logger.info(f"[CC] ✓ Installed L3 FORWARD flow to host: dst_ip={dst_ip} -> TTL-1, src_mac={switch_mac}, dst_mac={dst_mac_learned}, port={ingress_port}")
                         installed_count += 1
                     else:
                         # MAC not learned - trigger active ARP probing
@@ -1077,17 +1076,16 @@ class MySimpleSwitch13(app_manager.RyuApp):
                         self._send_arp_request(dp, dst_ip, host_ports)
                         
                         # Install table-miss-like flow to send to controller for MAC resolution
-                        # Match on GENERIC router MAC and dst_ip for proper L3 routing
-                        # Use generic format to match packets from inter-cluster
-                        router_mac = f"02:00:00:{self.cluster_id:02x}:00:00"
-                        match_fwd = parser.OFPMatch(eth_type=0x0800, eth_dst=router_mac, ipv4_dst=dst_ip)
+                        # Match ONLY on dst_ip (standard L3 routing), not on eth_dst
+                        # MAC is hop-by-hop and can vary across inter-cluster links
+                        match_fwd = parser.OFPMatch(eth_type=0x0800, ipv4_dst=dst_ip)
                         actions_fwd = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER)]
                         inst_fwd = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions_fwd)]
                         mod_fwd = parser.OFPFlowMod(datapath=dp, priority=15,  # Medium priority
                                                match=match_fwd, instructions=inst_fwd,
                                                idle_timeout=5)
                         dp.send_msg(mod_fwd)
-                        self.logger.info(f"[CC] ⚠ Installed L3 FORWARD flow to CONTROLLER (MAC not learned): eth_dst={router_mac}, dst_ip={dst_ip}, will upgrade after ARP response")
+                        self.logger.info(f"[CC] ⚠ Installed L3 FORWARD flow to CONTROLLER (MAC not learned): dst_ip={dst_ip}, will upgrade after ARP response")
                         installed_count += 1
                 
                 # === RETURN FLOW: traffic going back FROM dst_ip TO src_ip ===
