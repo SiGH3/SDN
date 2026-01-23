@@ -1325,9 +1325,11 @@ class MySimpleSwitch13(app_manager.RyuApp):
             hub.sleep(interval)
 
     def _send_lldp(self, dp, dpid: int, port_no: int):
-        # 构造 LLDP 帧：dst=01:80:c2:00:00:0e, src 任意本地 MAC
+        # 构造 LLDP 帧：dst=01:80:c2:00:00:0e, src=actual port MAC for underlay forwarding
+        # Use actual port MAC as source so peer can learn it for inter-cluster forwarding
+        port_mac = self._port_mac.get((dpid, port_no), '02:00:00:00:00:01')
         eth = ethernet.ethernet(dst=lldp.LLDP_MAC_NEAREST_BRIDGE,
-                                src='02:00:00:00:00:01',
+                                src=port_mac,
                                 ethertype=ether_types.ETH_TYPE_LLDP)
         tlvs = [
             lldp.ChassisID(subtype=lldp.ChassisID.SUB_LOCALLY_ASSIGNED,
