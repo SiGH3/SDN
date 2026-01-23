@@ -71,6 +71,8 @@ class MySimpleSwitch13(app_manager.RyuApp):
         self._host_ports = {}  # dpid -> set of host-facing port numbers
         self._boundary_ports = {}  # dpid -> set of boundary port numbers (LLDP-discovered inter-cluster)
         self._switch_mac = {}  # dpid -> MAC address for L3 routing
+        self._port_mac = {}  # (dpid, port_no) -> MAC address for underlay forwarding
+        self._peer_port_mac = {}  # (dpid, local_port) -> peer_mac for inter-cluster forwarding
         
         # Static host configuration for IP->MAC->Port binding
         # Format: { "ip": {"dpid": dpid, "port": port_no, "mac": "xx:xx:xx:xx:xx:xx"} }
@@ -230,10 +232,16 @@ class MySimpleSwitch13(app_manager.RyuApp):
             port_name = p.name.decode() if isinstance(p.name, bytes) else str(p.name)
             port_mac = p.hw_addr  # Already in text format (e.g., '00:11:22:33:44:55')
             
+            # Store port MAC address for all ports (for underlay forwarding)
+            self._port_mac[(dp.id, int(p.port_no))] = port_mac
+            
             if port_name.startswith('gre') or port_name.startswith('vxlan') or port_name.startswith('tun'):
                 # GRE/tunnel ports for inter-cluster connectivity
                 gre_ports.add(int(p.port_no))
-                self.logger.info(f"[CC] Identified GRE/tunnel port: {port_name} (port {p.port_no})")
+                self.logger.info(f"[CC] Identified GRE/tunnel port: {port_name} (port {p.port_no}, MAC {port_mac})")
+            elif port_name.startswith('wlx'):
+                # Wireless interface - potential boundary port for adhoc networks
+                self.logger.info(f"[CC] Identified wireless port: {port_name} (port {p.port_no}, MAC {port_mac})")
             elif not port_name.startswith('wlx'):  # Exclude wireless interfaces
                 # Host-facing ports (veth, eth, etc.)
                 host_ports.add(int(p.port_no))
@@ -355,6 +363,8 @@ class MySimpleSwitch13(app_manager.RyuApp):
 
         peer_dpid, peer_port = None, None
         local_port = msg.match.get("in_port")
+        peer_mac = eth.src  # Capture peer port MAC from ethernet source
+        
         try:
             for tlv in pkt_lldp.tlvs:
                 if isinstance(tlv, lldp.ChassisID):
@@ -402,7 +412,10 @@ class MySimpleSwitch13(app_manager.RyuApp):
         if dp.id not in self._boundary_ports:
             self._boundary_ports[dp.id] = set()
         self._boundary_ports[dp.id].add(int(local_port))
-        self.logger.info(f"[CC] ✓ Identified boundary port: port {local_port} on dpid={dp.id:016x} connects to remote cluster")
+        
+        # Store peer port MAC address for underlay forwarding (from LLDP packet source)
+        self._peer_port_mac[(dp.id, int(local_port))] = peer_mac
+        self.logger.info(f"[CC] ✓ Identified boundary port: port {local_port} (MAC {self._port_mac.get((dp.id, int(local_port)), 'unknown')}) on dpid={dp.id:016x} connects to remote cluster (peer MAC {peer_mac})")
 
         # 首次强制上报；后续按时间窗抑制
         now = time.time()
@@ -1023,23 +1036,45 @@ class MySimpleSwitch13(app_manager.RyuApp):
                             egress_port = list(gre_ports)[0]
                     
                     if egress_port:
-                        # L3 forward flow: match dst_ip, dec TTL, rewrite MACs to next-hop router, output to boundary port
+                        # L3 forward flow: match dst_ip, dec TTL, rewrite MACs for underlay forwarding
                         match_fwd = parser.OFPMatch(eth_type=0x0800, ipv4_dst=dst_ip)
-                        # Use actual router MAC of destination cluster for L3 hop-by-hop routing
-                        # Format: 02:00:00:CLUSTER:DPID_SUFFIX
-                        dst_router_mac = f"02:00:00:{dst_cluster:02x}:00:00"  # Generic router MAC for dst cluster
-                        actions_fwd = [
-                            parser.OFPActionDecNwTtl(),
-                            parser.OFPActionSetField(eth_src=switch_mac),
-                            parser.OFPActionSetField(eth_dst=dst_router_mac),  # Next-hop router MAC, not gateway MAC!
-                            parser.OFPActionOutput(egress_port)
-                        ]
+                        
+                        # Use actual port MAC addresses for underlay (adhoc wireless) forwarding
+                        # eth_src = local boundary port MAC (this OVS's data port MAC)
+                        # eth_dst = peer boundary port MAC (remote OVS's data port MAC)
+                        local_port_mac = self._port_mac.get((dpid, egress_port))
+                        peer_port_mac = self._peer_port_mac.get((dpid, egress_port))
+                        
+                        if local_port_mac and peer_port_mac:
+                            # Use underlay MAC addresses for direct L2 forwarding over adhoc
+                            actions_fwd = [
+                                parser.OFPActionDecNwTtl(),
+                                parser.OFPActionSetField(eth_src=local_port_mac),
+                                parser.OFPActionSetField(eth_dst=peer_port_mac),
+                                parser.OFPActionOutput(egress_port)
+                            ]
+                            log_src_mac = local_port_mac
+                            log_dst_mac = peer_port_mac
+                            self.logger.info(f"[CC] ✓ Using underlay MACs for cross-cluster: local={local_port_mac}, peer={peer_port_mac}")
+                        else:
+                            # Fallback: use switch MAC if port MACs not available
+                            dst_router_mac = f"02:00:00:{dst_cluster:02x}:00:00"  # Generic router MAC for dst cluster
+                            actions_fwd = [
+                                parser.OFPActionDecNwTtl(),
+                                parser.OFPActionSetField(eth_src=switch_mac),
+                                parser.OFPActionSetField(eth_dst=dst_router_mac),
+                                parser.OFPActionOutput(egress_port)
+                            ]
+                            log_src_mac = switch_mac
+                            log_dst_mac = dst_router_mac
+                            self.logger.info(f"[CC] ⚠ Port MACs not available (local={local_port_mac}, peer={peer_port_mac}), using fallback")
+                        
                         inst_fwd = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions_fwd)]
                         mod_fwd = parser.OFPFlowMod(datapath=dp, priority=15,
                                                match=match_fwd, instructions=inst_fwd,
                                                idle_timeout=30, hard_timeout=60)
                         dp.send_msg(mod_fwd)
-                        self.logger.info(f"[CC] ✓ Installed L3 FORWARD flow: dst_ip={dst_ip} -> TTL-1, src_mac={switch_mac}, dst_mac={dst_router_mac} (next-hop router), port={egress_port}")
+                        self.logger.info(f"[CC] ✓ Installed L3 FORWARD flow: dst_ip={dst_ip} -> TTL-1, src_mac={log_src_mac}, dst_mac={log_dst_mac}, port={egress_port}")
                         installed_count += 1
                 
                 elif is_dest_cluster:
@@ -1114,22 +1149,43 @@ class MySimpleSwitch13(app_manager.RyuApp):
                             egress_port = list(gre_ports)[0]
                     
                     if egress_port:
-                        # L3 return flow: match dst_ip (return to source), dec TTL, rewrite MACs to next-hop router, output to boundary port
+                        # L3 return flow: match dst_ip (return to source), dec TTL, rewrite MACs for underlay forwarding
                         match_ret = parser.OFPMatch(eth_type=0x0800, ipv4_dst=src_ip)
-                        # Use actual router MAC of source cluster for L3 hop-by-hop routing
-                        src_router_mac = f"02:00:00:{src_cluster:02x}:00:00"  # Generic router MAC for src cluster
-                        actions_ret = [
-                            parser.OFPActionDecNwTtl(),
-                            parser.OFPActionSetField(eth_src=switch_mac),
-                            parser.OFPActionSetField(eth_dst=src_router_mac),  # Next-hop router MAC, not gateway MAC!
-                            parser.OFPActionOutput(egress_port)
-                        ]
+                        
+                        # Use actual port MAC addresses for underlay (adhoc wireless) forwarding
+                        # eth_src = local boundary port MAC (this OVS's data port MAC)
+                        # eth_dst = peer boundary port MAC (remote OVS's data port MAC)
+                        local_port_mac = self._port_mac.get((dpid, egress_port))
+                        peer_port_mac = self._peer_port_mac.get((dpid, egress_port))
+                        
+                        if local_port_mac and peer_port_mac:
+                            # Use underlay MAC addresses for direct L2 forwarding over adhoc
+                            actions_ret = [
+                                parser.OFPActionDecNwTtl(),
+                                parser.OFPActionSetField(eth_src=local_port_mac),
+                                parser.OFPActionSetField(eth_dst=peer_port_mac),
+                                parser.OFPActionOutput(egress_port)
+                            ]
+                            log_src_mac = local_port_mac
+                            log_dst_mac = peer_port_mac
+                        else:
+                            # Fallback: use switch MAC if port MACs not available
+                            src_router_mac = f"02:00:00:{src_cluster:02x}:00:00"  # Generic router MAC for src cluster
+                            actions_ret = [
+                                parser.OFPActionDecNwTtl(),
+                                parser.OFPActionSetField(eth_src=switch_mac),
+                                parser.OFPActionSetField(eth_dst=src_router_mac),
+                                parser.OFPActionOutput(egress_port)
+                            ]
+                            log_src_mac = switch_mac
+                            log_dst_mac = src_router_mac
+                        
                         inst_ret = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions_ret)]
                         mod_ret = parser.OFPFlowMod(datapath=dp, priority=15,
                                                match=match_ret, instructions=inst_ret,
                                                idle_timeout=30, hard_timeout=60)
                         dp.send_msg(mod_ret)
-                        self.logger.info(f"[CC] ✓ Installed L3 RETURN flow: dst_ip={src_ip} -> TTL-1, src_mac={switch_mac}, dst_mac={src_router_mac} (next-hop router), port={egress_port}")
+                        self.logger.info(f"[CC] ✓ Installed L3 RETURN flow: dst_ip={src_ip} -> TTL-1, src_mac={log_src_mac}, dst_mac={log_dst_mac}, port={egress_port}")
                         installed_count += 1
                 
                 elif is_source_cluster:
