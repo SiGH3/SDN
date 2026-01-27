@@ -104,6 +104,23 @@ class ThreadSafeStateManager:
                 cluster_a, cluster_b, latency, load, weight
             )
     
+    def update_intra_cluster_cost(self, cluster_id: int, cost: float,
+                                  ingress: str = None, egress: str = None) -> bool:
+        """
+        Update intra-cluster cost for cluster-aware routing.
+        Thread-safe wrapper for ClusterGraph.update_intra_cluster_cost()
+        
+        Args:
+            cluster_id: Cluster ID
+            cost: Abstract intra-cluster cost (e.g., hop count)
+            ingress: Optional ingress boundary switch
+            egress: Optional egress boundary switch
+        """
+        with self._graph_lock:
+            return self._graph.update_intra_cluster_cost(
+                cluster_id, cost, ingress, egress
+            )
+    
     def calculate_path(self, src: int, dst: int, policy: dict = None) -> List[int]:
         """Calculate best path between clusters"""
         with self._graph_lock:
