@@ -84,6 +84,148 @@ def print_warning(text):
     print(f"{Colors.WARNING}⚠ {text}{Colors.ENDC}")
 
 
+def print_protocol_message(direction: str, msg_type: str, content: Dict):
+    """Print protocol message in formatted style"""
+    arrow = "→" if "CC→AC" in direction else "←"
+    color = Colors.OKCYAN if "CC→AC" in direction else Colors.OKGREEN
+    
+    print(f"\n{color}{Colors.BOLD}[{direction}] {msg_type}{Colors.ENDC}")
+    for key, value in content.items():
+        if isinstance(value, (list, tuple)):
+            print(f"  • {key}:")
+            for item in value:
+                print(f"    - {item}")
+        elif isinstance(value, dict):
+            print(f"  • {key}:")
+            for k, v in value.items():
+                print(f"    - {k}: {v}")
+        else:
+            print(f"  • {key}: {value}")
+
+
+def simulate_protocol_exchange(metrics: 'NetworkMetrics', src: int, dst: int):
+    """Simulate CC-AC protocol message exchange"""
+    
+    print_section("CC-AC Protocol Interaction Simulation")
+    print_info("Demonstrating hierarchical SDN protocol message flow")
+    
+    # Phase 1: CC collects metrics
+    print(f"\n{Colors.BOLD}Phase 1: CC Metric Collection{Colors.ENDC}")
+    print_info(f"CC-{src} collects local cluster metrics and inter-cluster link measurements")
+    
+    # Simulate CC collecting cluster metrics
+    cluster_data = {}
+    for cluster_id in metrics.cluster_metrics.keys():
+        cluster_metric = metrics.cluster_metrics[cluster_id]
+        cluster_data[f"C{cluster_id}"] = {
+            'avg_delay': f"{cluster_metric.get('delay', 0):.2f} ms",
+            'packet_loss': f"{cluster_metric.get('loss', 0):.4f}",
+            'queue_len': f"{cluster_metric.get('queue', 0):.2f}"
+        }
+    
+    print(f"  Collected metrics from {len(cluster_data)} cluster(s)")
+    
+    # Simulate CC collecting inter-cluster link metrics
+    link_data = {}
+    for (u, v), link_metric in metrics.intercluster_links.items():
+        link_key = f"C{u}→C{v}"
+        link_data[link_key] = {
+            'delay': f"{link_metric.get('delay', 0):.2f} ms",
+            'loss': f"{link_metric.get('loss', 0):.4f}"
+        }
+    
+    print(f"  Measured {len(link_data)} inter-cluster link(s)")
+    
+    # Phase 2: CC reports metrics to AC via INTERCLUSTER_LINK_METRICS
+    print(f"\n{Colors.BOLD}Phase 2: CC Reports Metrics to AC{Colors.ENDC}")
+    
+    # Simulate INTERCLUSTER_LINK_METRICS message from each CC
+    for cluster_id in metrics.cluster_metrics.keys():
+        cluster_links = [(u, v) for (u, v) in metrics.intercluster_links.keys() if u == cluster_id]
+        
+        if cluster_links:
+            metric_entries = []
+            for (u, v) in cluster_links:
+                link_metric = metrics.intercluster_links[(u, v)]
+                metric_entries.append(
+                    f"link_key=C{u}→C{v}, latency={link_metric.get('delay', 0):.2f}ms, "
+                    f"loss={link_metric.get('loss', 0):.4f}"
+                )
+            
+            print_protocol_message(
+                "CC→AC",
+                "INTERCLUSTER_LINK_METRICS",
+                {
+                    'cluster_id': cluster_id,
+                    'num_links': len(cluster_links),
+                    'metrics': metric_entries
+                }
+            )
+    
+    print_success("AC received and stored all inter-cluster link metrics")
+    
+    # Phase 3: Host initiates cross-cluster communication
+    print(f"\n{Colors.BOLD}Phase 3: Cross-Cluster Flow Request{Colors.ENDC}")
+    print_info(f"Host in C{src} wants to communicate with host in C{dst}")
+    print_info(f"CC-{src} detects cross-cluster traffic and requests path from AC")
+    
+    # Simulate FLOW_REQUEST message
+    print_protocol_message(
+        "CC→AC",
+        "FLOW_REQUEST",
+        {
+            'src_cluster': src,
+            'dst_cluster': dst,
+            'match_fields': {
+                'dst_ip': f"10.{dst}0.0.10",
+                'src_ip': f"10.{src}0.0.10"
+            }
+        }
+    )
+    
+    # Phase 4: AC computes path and sends FLOW_REPLY
+    print(f"\n{Colors.BOLD}Phase 4: AC Path Computation and Reply{Colors.ENDC}")
+    print_info("AC uses routing algorithm to compute cluster-level path")
+    print_info("AC considers inter-cluster link metrics and cluster internal costs")
+
+
+def simulate_flow_reply(path: List[int], src: int, dst: int):
+    """Simulate FLOW_REPLY message from AC to CC"""
+    
+    # Simulate path computation complete
+    print_success(f"Path computed: {' → '.join(f'C{c}' for c in path)}")
+    
+    # Simulate FLOW_REPLY message
+    segments = []
+    for i in range(len(path)):
+        cluster_id = path[i]
+        ingress = "entry_port" if i == 0 else f"from_C{path[i-1]}"
+        egress = "exit_port" if i == len(path) - 1 else f"to_C{path[i+1]}"
+        segments.append(f"C{cluster_id}: ingress={ingress}, egress={egress}")
+    
+    print_protocol_message(
+        "AC→CC",
+        "FLOW_REPLY",
+        {
+            'path': [f"C{c}" for c in path],
+            'num_hops': len(path) - 1,
+            'segments': segments,
+            'match_fields': {
+                'dst_ip': f"10.{dst}0.0.10",
+                'src_ip': f"10.{src}0.0.10"
+            }
+        }
+    )
+    
+    # Phase 5: CCs install flows
+    print(f"\n{Colors.BOLD}Phase 5: Flow Installation{Colors.ENDC}")
+    for cluster_id in path:
+        print_info(f"CC-{cluster_id} installs forwarding flows based on path segment")
+    
+    print_success("Cross-cluster routing path established!")
+    print_info("Host traffic can now flow across clusters")
+
+
 def normalize_min_max(values: List[float]) -> List[float]:
     """Min-Max normalization: x̂ = (x - x_min) / (x_max - x_min)"""
     if not values or len(set(values)) == 1:
@@ -327,6 +469,9 @@ def run_scenario(scenario_name: str, data_dir: str, src: int, dst: int,
     metrics.load_intercluster_links(intercluster_file, time_slice)
     metrics.load_cluster_metrics(cluster_file, time_slice)
     
+    # Simulate CC-AC protocol interaction
+    simulate_protocol_exchange(metrics, src, dst)
+    
     # Run algorithms
     routing = RoutingAlgorithm(metrics)
     
@@ -350,6 +495,9 @@ def run_scenario(scenario_name: str, data_dir: str, src: int, dst: int,
     print_metric("End-to-end delay", cluster_metrics['delay'], "ms")
     print_metric("Average loss", cluster_metrics['loss'], "")
     print_metric("Hop count", cluster_metrics['hops'], "")
+    
+    # Simulate FLOW_REPLY for the selected path (using cluster-aware result)
+    simulate_flow_reply(cluster_path, src, dst)
     
     # Calculate improvements
     print_section("Performance Comparison")

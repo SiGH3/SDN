@@ -1,12 +1,38 @@
 # NS-3 Routing Performance Comparison Tool
 
-This tool compares hierarchical SDN routing algorithms using real NS-3 simulation data.
+This tool compares hierarchical SDN routing algorithms using real NS-3 simulation data with **CC-AC protocol interaction simulation**.
 
 ## Overview
 
 The tool evaluates two routing strategies across multiple scenarios:
 - **Algorithm 1 (Baseline)**: Standard Dijkstra with uniform hop-count weights
 - **Algorithm 3 (Cluster-Aware)**: Weighted Dijkstra with multi-dimensional metrics
+
+### CC-AC Protocol Simulation
+
+The tool simulates the complete message exchange between Cluster Controllers (CC) and Aggregation Controller (AC):
+
+1. **Phase 1: CC Metric Collection**
+   - CCs collect local cluster metrics (delay, loss, queue length)
+   - CCs measure inter-cluster link metrics
+
+2. **Phase 2: CC→AC Metric Reporting**
+   - CCs send `INTERCLUSTER_LINK_METRICS` messages to AC
+   - AC receives and stores all inter-cluster link metrics
+
+3. **Phase 3: Cross-Cluster Flow Request**
+   - Host initiates cross-cluster communication
+   - Source CC sends `FLOW_REQUEST` to AC
+
+4. **Phase 4: AC Path Computation**
+   - AC computes cluster-level path using routing algorithms
+   - AC sends `FLOW_REPLY` with path segments to CCs
+
+5. **Phase 5: Flow Installation**
+   - CCs install forwarding flows based on path segments
+   - Cross-cluster routing path established
+
+This simulation demonstrates the hierarchical SDN control plane interaction without requiring actual deployment.
 
 ## Scenarios
 
