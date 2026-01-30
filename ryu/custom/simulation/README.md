@@ -2,6 +2,8 @@
 
 This tool simulates the hierarchical SDN routing mechanism for research paper demonstration.
 
+**Location**: `/ryu/custom/simulation/` - Part of the custom SDN controller modules
+
 ## Purpose
 
 This standalone simulation tool:
@@ -57,7 +59,12 @@ time,src_cluster,dst_cluster,delay,loss
 1,1,2,17.9147,0.0405983
 1,2,3,25.4336,0.0649573
 1,3,1,12.7227,0.0350427
+1,1,3,30.5000,0.0800000
 ```
+
+**Note**: The sample data now includes a full mesh topology with direct links between all cluster pairs (bidirectional), allowing the algorithms to demonstrate different path selection strategies. For example:
+- C1→C3 direct link (1 hop, higher delay/loss)
+- C1→C2→C3 via intermediate (2 hops, potentially lower per-link metrics)
 
 ### cluster_metrics.csv
 ```csv
