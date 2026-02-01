@@ -367,7 +367,7 @@ class RoutingAlgorithm:
                                beta: float = 0.3, 
                                gamma: float = 0.3) -> Tuple[List[int], float]:
         """
-        Algorithm 3: Cluster-Aware Weighted Dijkstra
+        Algorithm 2: Cluster-Aware Weighted Dijkstra
         
         Edge weight: w(C_u → C_v) = α·D_norm + β·L_norm + γ·C_intra(u)
         where:
@@ -485,7 +485,7 @@ def run_scenario(scenario_name: str, data_dir: str, src: int, dst: int,
     print_metric("Average loss", baseline_metrics['loss'], "")
     print_metric("Hop count", baseline_metrics['hops'], "")
     
-    print_section("Algorithm 3: Cluster-Aware Weighted Dijkstra")
+    print_section("Algorithm 2: Cluster-Aware Weighted Dijkstra")
     print_info(f"Weight formula: w = {alpha}·delay + {beta}·loss + {gamma}·intra_cost")
     cluster_path, cluster_cost = routing.cluster_aware_weighted(src, dst, alpha, beta, gamma)
     print_info(f"Path: {' → '.join(f'C{c}' for c in cluster_path)}")

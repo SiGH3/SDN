@@ -27,7 +27,7 @@ Successfully implemented a comprehensive tool for comparing hierarchical SDN rou
 **Features:**
 - Load NS-3 metrics (delay, loss, queue length)
 - Implement Algorithm 1 (Baseline Dijkstra)
-- Implement Algorithm 3 (Cluster-Aware Weighted Dijkstra)
+- Implement Algorithm 2 (Cluster-Aware Weighted Dijkstra)
 - Calculate actual path performance
 - Generate publication-ready graphs
 
@@ -37,7 +37,7 @@ Successfully implemented a comprehensive tool for comparing hierarchical SDN rou
 # Algorithm 1: Baseline Dijkstra
 weight = 1  # Uniform hop count
 
-# Algorithm 3: Cluster-Aware Weighted
+# Algorithm 2: Cluster-Aware Weighted
 weight = α·D_norm + β·L_norm + γ·C_intra
 
 Where:
@@ -124,7 +124,7 @@ Runs all scenarios automatically.
   • Average loss: 0.0350 
   • Hop count: 1.0000 
 
-[Algorithm 3: Cluster-Aware Weighted Dijkstra]
+[Algorithm 2: Cluster-Aware Weighted Dijkstra]
 → Weight formula: w = 0.4·delay + 0.3·loss + 0.3·intra_cost
 → Path: C1 → C3
 → Cost: 0.0000
@@ -157,7 +157,7 @@ Runs all scenarios automatically.
   • Average loss: 0.0526 
   • Hop count: 2.0000 
 
-[Algorithm 3: Cluster-Aware Weighted Dijkstra]
+[Algorithm 2: Cluster-Aware Weighted Dijkstra]
 → Weight formula: w = 0.4·delay + 0.3·loss + 0.3·intra_cost
 → Path: C1 → C5 → C4
 → Cost: 0.1546

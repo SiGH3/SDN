@@ -18,7 +18,7 @@ This standalone simulation tool:
 - **Visual Terminal Output**: Color-coded messages showing CC→AC communication and routing decisions
 - **Two Routing Algorithms**:
   - Algorithm 1: Baseline Cluster-Level Dijkstra (uniform hop-count weights)
-  - Algorithm 3: Cluster-Aware Weighted Dijkstra (multi-dimensional metrics)
+  - Algorithm 2: Cluster-Aware Weighted Dijkstra (multi-dimensional metrics)
 - **Performance Metrics**: End-to-end delay, packet loss, hop count
 - **Comparison Graphs**: Bar charts comparing algorithm performance
 

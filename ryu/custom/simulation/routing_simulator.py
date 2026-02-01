@@ -267,10 +267,10 @@ class AggregationController:
                                        alpha: float = 0.4, beta: float = 0.3, 
                                        gamma: float = 0.3) -> Tuple[List[int], float]:
         """
-        Algorithm 3: Cluster-Aware Weighted Dijkstra
+        Algorithm 2: Cluster-Aware Weighted Dijkstra
         Edge weight = α·D_norm + β·L_norm + γ·C_intra
         """
-        print_section(f"Algorithm 3: Cluster-Aware Weighted Dijkstra (C{src} → C{dst})")
+        print_section(f"Algorithm 2: Cluster-Aware Weighted Dijkstra (C{src} → C{dst})")
         print_info(f"Weight formula: w = α·delay + β·loss + γ·intra_cost")
         print_info(f"Parameters: α={alpha}, β={beta}, γ={gamma}")
         

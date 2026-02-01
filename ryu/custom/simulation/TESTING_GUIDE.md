@@ -18,7 +18,7 @@ python3 performance_comparison.py --scenario 3_cluster --src 1 --dst 3 --time 1
 
 **Expected Output:**
 - Algorithm 1 (Baseline): Selects optimal path based on hop count
-- Algorithm 3 (Cluster-Aware): Selects path considering delay, loss, and intra-cluster cost
+- Algorithm 2 (Cluster-Aware): Selects path considering delay, loss, and intra-cluster cost
 - Shows performance metrics: delay (ms), loss rate, hop count
 
 ### 2. Five-Cluster Scenario (C1→C4) - Scalability Verification
@@ -85,7 +85,7 @@ python3 performance_comparison.py --all --alpha 0.4 --beta 0.3 --gamma 0.3
    - Path selected
    - Cost in hops
    - Performance metrics (delay, loss, hop count)
-4. **Algorithm 3 Results**:
+4. **Algorithm 2 Results**:
    - Weight formula used
    - Path selected
    - Weighted cost
@@ -143,7 +143,7 @@ ryu/custom/simulation/
 - Selects minimum hop-count path
 - No consideration of link quality or cluster characteristics
 
-### Algorithm 3: Cluster-Aware Weighted Dijkstra
+### Algorithm 2: Cluster-Aware Weighted Dijkstra
 - Weight: w(C_u→C_v) = α·D_norm + β·L_norm + γ·C_intra
 - D_norm: Normalized inter-cluster delay
 - L_norm: Normalized inter-cluster packet loss

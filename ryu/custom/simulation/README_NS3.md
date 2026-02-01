@@ -6,7 +6,7 @@ This tool compares hierarchical SDN routing algorithms using real NS-3 simulatio
 
 The tool evaluates two routing strategies across multiple scenarios:
 - **Algorithm 1 (Baseline)**: Standard Dijkstra with uniform hop-count weights
-- **Algorithm 3 (Cluster-Aware)**: Weighted Dijkstra with multi-dimensional metrics
+- **Algorithm 2 (Cluster-Aware)**: Weighted Dijkstra with multi-dimensional metrics
 
 ### CC-AC Protocol Simulation
 
@@ -121,7 +121,7 @@ python3 performance_comparison.py --all --alpha 0.4 --beta 0.3 --gamma 0.3  # De
 The tool displays:
 1. **Metric Loading**: Shows normalized inter-cluster and intra-cluster metrics
 2. **Algorithm 1 Results**: Path selection and performance metrics using baseline
-3. **Algorithm 3 Results**: Path selection and performance metrics using cluster-aware
+3. **Algorithm 2 Results**: Path selection and performance metrics using cluster-aware
 4. **Performance Comparison**: Improvement percentages for delay and loss
 
 ### Graph Files
@@ -152,7 +152,7 @@ The tool displays:
   • Average loss: 0.0350
   • Hop count: 1.0000
 
-[Algorithm 3: Cluster-Aware Weighted Dijkstra]
+[Algorithm 2: Cluster-Aware Weighted Dijkstra]
 → Weight formula: w = 0.4·delay + 0.3·loss + 0.3·intra_cost
 → Path: C1 → C3
 → Cost: 0.0000
@@ -203,7 +203,7 @@ Standard shortest path with uniform weights:
 - Finds minimum hop-count path
 - Time complexity: O((V+E) log V)
 
-### Algorithm 3: Cluster-Aware Weighted Dijkstra
+### Algorithm 2: Cluster-Aware Weighted Dijkstra
 
 Multi-dimensional weighted shortest path:
 - Edge weight = α·D_norm + β·L_norm + γ·C_intra
