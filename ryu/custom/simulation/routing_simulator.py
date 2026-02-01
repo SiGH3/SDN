@@ -440,6 +440,8 @@ def compare_algorithms(ac: AggregationController, flows: List[Tuple[int, int]]):
 def generate_comparison_plots(results: Dict):
     """Generate performance comparison plots"""
     try:
+        import matplotlib
+        matplotlib.use('Agg')  # Non-interactive backend for headless environments
         import matplotlib.pyplot as plt
         import numpy as np
     except ImportError:
@@ -513,7 +515,8 @@ def generate_comparison_plots(results: Dict):
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     print_success(f"Saved plot to: {output_file}")
     
-    plt.show()
+    # Note: plt.show() removed for headless operation
+    # Graphs are saved to files and do not require display
 
 
 def main():

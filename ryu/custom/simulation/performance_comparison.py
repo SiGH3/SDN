@@ -31,9 +31,9 @@ from typing import Dict, List, Tuple, Optional
 import heapq
 
 try:
-    import matplotlib.pyplot as plt
     import matplotlib
-    matplotlib.use('Agg')  # Non-interactive backend
+    matplotlib.use('Agg')  # Non-interactive backend - MUST be before pyplot import
+    import matplotlib.pyplot as plt
     HAS_MATPLOTLIB = True
 except ImportError:
     HAS_MATPLOTLIB = False
