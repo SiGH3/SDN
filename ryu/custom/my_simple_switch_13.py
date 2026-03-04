@@ -19,6 +19,7 @@ from collections import defaultdict
 
 from ryu.custom.protocol import message_pb2, message
 from ryu.custom.utils import network
+from ryu.lib.packet import ipv4, arp
 
 class MySimpleSwitch13(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
@@ -49,13 +50,162 @@ class MySimpleSwitch13(app_manager.RyuApp):
         self._ports = defaultdict(list)   # dpid -> [port_no,...]
         self._lldp_tx_threads = {}        # dpid -> greenthread
         self._pending_links = {}  # lk -> (local_name, local_port, peer_dpid, peer_port)
+        
+        # Message tracking for synchronization
+        self._msg_counter = 0
+        self._msg_counter_lock = hub.Semaphore()
+        
+        # Cross-cluster flow routing
+        self._mac_to_port = {}  # (dpid, mac) -> port_no
+        self._local_hosts = set()  # Set of MAC addresses in this cluster
+        self._flow_requests_pending = {}  # (src_cluster, dst_cluster) -> timestamp
+        
+        # ARP proxy for cross-cluster communication
+        # Virtual gateway MAC for each cluster (format: 02:00:00:00:XX:XX where XX is cluster_id)
+        self._cluster_gateway_macs = {}  # cluster_id -> virtual_mac
+        self._ip_to_mac = {}  # IP -> MAC mapping learned from ARP packets
+        self._ip_to_cluster = {}  # IP -> cluster_id mapping
+        
+        # L3 Routing: Port classification
+        self._gre_ports = {}  # dpid -> set of GRE/tunnel port numbers
+        self._host_ports = {}  # dpid -> set of host-facing port numbers
+        self._boundary_ports = {}  # dpid -> set of boundary port numbers (LLDP-discovered inter-cluster)
+        self._switch_mac = {}  # dpid -> MAC address for L3 routing
+        self._port_mac = {}  # (dpid, port_no) -> MAC address for underlay forwarding
+        self._peer_port_mac = {}  # (dpid, local_port) -> peer_mac for inter-cluster forwarding
+        
+        # Static host configuration for IP->MAC->Port binding
+        # Format: { "ip": {"dpid": dpid, "port": port_no, "mac": "xx:xx:xx:xx:xx:xx"} }
+        self._static_hosts = {}
+        self._load_static_host_config()
+        
+        # Start background loops
         hub.spawn(self._periodic_advertise_loop)
+        hub.spawn(self._heartbeat_loop)
+
+    def _load_static_host_config(self):
+        """
+        Load static host configuration from per-cluster file, custom file, or environment variable.
+        
+        Priority order:
+        1. Per-cluster config file: config/hosts_cluster<N>.json (automatic for this cluster)
+        2. Custom file specified by HOST_CONFIG_FILE environment variable
+        3. Inline configuration from STATIC_HOSTS environment variable
+        
+        Per-cluster file format (JSON):
+        {
+          "cluster_id": 1,
+          "hosts": {
+            "10.10.0.10": {
+              "mac": "02:da:d9:38:7b:b1",
+              "port": 9,
+              "dpid": "0x0c826821c8a4",
+              "description": "Host h1 on OVS1"
+            }
+          }
+        }
+        
+        Environment variable format: IP1=MAC1:PORT1:DPID1,IP2=MAC2:PORT2:DPID2,...
+        Example: 10.10.0.10=02:da:d9:38:7b:b1:9:13754232326308
+        """
+        import os
+        import json
+        
+        # Priority 1: Try per-cluster config file (automatic based on cluster_id)
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        repo_root = os.path.dirname(os.path.dirname(script_dir))  # Go up from ryu/custom/ to repo root
+        per_cluster_file = os.path.join(repo_root, 'config', f'hosts_cluster{self.cluster_id}.json')
+        
+        if os.path.exists(per_cluster_file):
+            try:
+                with open(per_cluster_file, 'r') as f:
+                    config = json.load(f)
+                    config_cluster_id = config.get("cluster_id")
+                    
+                    # Validate cluster ID matches
+                    if config_cluster_id != self.cluster_id:
+                        self.logger.warning(f"[CC] Cluster ID mismatch in {per_cluster_file}: file has {config_cluster_id}, controller is {self.cluster_id}")
+                    
+                    hosts = config.get("hosts", {})
+                    for ip, host_info in hosts.items():
+                        self._static_hosts[ip] = {
+                            "mac": host_info["mac"],
+                            "port": int(host_info["port"]),
+                            "dpid": int(host_info["dpid"], 16) if isinstance(host_info["dpid"], str) and host_info["dpid"].startswith("0x") else int(host_info["dpid"])
+                        }
+                        cluster_id = self._get_cluster_from_ip(ip)
+                        self._ip_to_cluster[ip] = cluster_id
+                        desc = host_info.get("description", "")
+                        self.logger.info(f"[CC] Loaded static host from cluster config: {ip} -> MAC={host_info['mac']}, port={host_info['port']}, dpid={host_info['dpid']}, cluster={cluster_id} ({desc})")
+                self.logger.info(f"[CC] Successfully loaded {len(hosts)} host(s) from {per_cluster_file}")
+                return
+            except Exception as e:
+                self.logger.warning(f"[CC] Failed to load per-cluster config from {per_cluster_file}: {e}")
+        else:
+            self.logger.info(f"[CC] Per-cluster config file not found: {per_cluster_file}")
+        
+        # Priority 2: Try custom config file from HOST_CONFIG_FILE env var
+        config_file = os.getenv("HOST_CONFIG_FILE")
+        if config_file and os.path.exists(config_file):
+            try:
+                with open(config_file, 'r') as f:
+                    config = json.load(f)
+                    # Support both formats: with "hosts" key or direct IP mapping
+                    hosts_dict = config.get("hosts", config) if "hosts" in config else config
+                    for ip, host_info in hosts_dict.items():
+                        if not isinstance(host_info, dict):
+                            continue
+                        self._static_hosts[ip] = {
+                            "mac": host_info["mac"],
+                            "port": int(host_info["port"]),
+                            "dpid": int(host_info["dpid"], 16) if isinstance(host_info["dpid"], str) and host_info["dpid"].startswith("0x") else int(host_info["dpid"])
+                        }
+                        cluster_id = self._get_cluster_from_ip(ip)
+                        self._ip_to_cluster[ip] = cluster_id
+                        self.logger.info(f"[CC] Loaded static host from custom file: {ip} -> MAC={host_info['mac']}, port={host_info['port']}, dpid={host_info['dpid']}, cluster={cluster_id}")
+                self.logger.info(f"[CC] Successfully loaded host config from {config_file}")
+                return
+            except Exception as e:
+                self.logger.warning(f"[CC] Failed to load host config from file {config_file}: {e}")
+        
+        # Priority 3: Fall back to environment variable (inline format)
+        host_config_str = os.getenv("STATIC_HOSTS", "")
+        if not host_config_str:
+            self.logger.info("[CC] No static host configuration provided. Will use reactive discovery.")
+            return
+        
+        # Parse format: IP1=MAC1:PORT1:DPID1,IP2=MAC2:PORT2:DPID2
+        for entry in host_config_str.split(','):
+            entry = entry.strip()
+            if not entry:
+                continue
+            try:
+                ip, rest = entry.split('=')
+                parts = rest.split(':')
+                # MAC is first 6 parts (xx:xx:xx:xx:xx:xx), then port, then dpid
+                mac = ':'.join(parts[0:6])
+                port = int(parts[6])
+                dpid = int(parts[7])
+                
+                self._static_hosts[ip] = {
+                    "mac": mac,
+                    "port": port,
+                    "dpid": dpid
+                }
+                cluster_id = self._get_cluster_from_ip(ip)
+                self._ip_to_cluster[ip] = cluster_id
+                self.logger.info(f"[CC] Loaded static host from env: {ip} -> MAC={mac}, port={port}, dpid={dpid}, cluster={cluster_id}")
+            except Exception as e:
+                self.logger.error(f"[CC] Failed to parse static host entry '{entry}': {e}")
 
     @set_ev_cls(ofp_event.EventOFPStateChange, [MAIN_DISPATCHER, DEAD_DISPATCHER])
     def _state_change_handler(self, ev):
         dp = ev.datapath
         if ev.state == MAIN_DISPATCHER:
             self._datapaths[dp.id] = dp
+            # Start LLDP TX loop now that datapath is registered
+            if dp.id not in self._lldp_tx_threads:
+                self._lldp_tx_threads[dp.id] = hub.spawn(self._lldp_tx_loop, dp.id)
         elif ev.state == DEAD_DISPATCHER:
             self._datapaths.pop(dp.id, None)
             self._ports.pop(dp.id, None)
@@ -69,13 +219,66 @@ class MySimpleSwitch13(app_manager.RyuApp):
         dp = ev.msg.datapath
         ofp = dp.ofproto
         ports = []
+        gre_ports = set()
+        host_ports = set()
+        
         for p in ev.msg.body:
             # 过滤保留端口（>= OFPP_MAX）
             if int(p.port_no) >= ofp.OFPP_MAX:
                 continue
             ports.append(int(p.port_no))
+            
+            # Classify ports: GRE tunnels vs host-facing ports
+            port_name = p.name.decode() if isinstance(p.name, bytes) else str(p.name)
+            port_mac = p.hw_addr  # Already in text format (e.g., '00:11:22:33:44:55')
+            
+            # Store port MAC address for all ports (for underlay forwarding)
+            self._port_mac[(dp.id, int(p.port_no))] = port_mac
+            
+            if port_name.startswith('gre') or port_name.startswith('vxlan') or port_name.startswith('tun'):
+                # GRE/tunnel ports for inter-cluster connectivity
+                gre_ports.add(int(p.port_no))
+                self.logger.info(f"[CC] Identified GRE/tunnel port: {port_name} (port {p.port_no}, MAC {port_mac})")
+            elif port_name.startswith('wlx'):
+                # Wireless interface - potential boundary port for adhoc networks
+                self.logger.info(f"[CC] Identified wireless port: {port_name} (port {p.port_no}, MAC {port_mac})")
+            elif not port_name.startswith('wlx'):  # Exclude wireless interfaces
+                # Host-facing ports (veth, eth, etc.)
+                host_ports.add(int(p.port_no))
+                self.logger.info(f"[CC] Identified host-facing port: {port_name} (port {p.port_no}, MAC {port_mac})")
+                
+                # NEW: Pre-populate MAC learning with port MAC address
+                # In "one host one OVS" architecture, use port MAC as host MAC
+                # This eliminates the need for ARP learning or waiting for host packets
+                self._mac_to_port[(dp.id, port_mac)] = int(p.port_no)
+                self.logger.info(f"[CC] Pre-learned host MAC from port: {port_mac} -> dpid={dp.id:016x} port={p.port_no}")
+                
+                # NEW: Check static host configuration and pre-populate IP->MAC bindings
+                for ip, host_info in self._static_hosts.items():
+                    if host_info["dpid"] == dp.id and host_info["port"] == int(p.port_no):
+                        # Found matching static configuration
+                        self._ip_to_mac[ip] = host_info["mac"]
+                        self._mac_to_port[(dp.id, host_info["mac"])] = int(p.port_no)
+                        cluster_id = self._get_cluster_from_ip(ip)
+                        self._ip_to_cluster[ip] = cluster_id
+                        self.logger.info(f"[CC] ✓ Static host binding activated: IP={ip} -> MAC={host_info['mac']}, port={p.port_no}, cluster={cluster_id}")
+                
+                # Note: IP-to-cluster mapping is now determined from the IP address itself
+                # in _get_cluster_from_ip() method based on IP ranges:
+                # 10.10.0.10-19 = cluster 1, 10.10.0.20-29 = cluster 2, etc.
+                # Port naming (br1-h1, br2-h2, etc.) is flexible and not used for IP inference
+        
         self._ports[dp.id] = ports
-        self.logger.info(f"[CC] ports dpid={dp.id} -> {ports}")
+        self._gre_ports[dp.id] = gre_ports
+        self._host_ports[dp.id] = host_ports
+        
+        # Generate a virtual MAC for this switch for L3 routing
+        if dp.id not in self._switch_mac:
+            # Format: 02:00:00:CC:XX:XX where CC=cluster_id, XX:XX=dpid last 2 bytes
+            self._switch_mac[dp.id] = f"02:00:00:{self.cluster_id:02x}:{(dp.id >> 8) & 0xff:02x}:{dp.id & 0xff:02x}"
+            self.logger.info(f"[CC] Generated L3 router MAC for dpid={dp.id:016x}: {self._switch_mac[dp.id]}")
+        
+        self.logger.info(f"[CC] Port classification dpid={dp.id}: total={len(ports)}, GRE={len(gre_ports)}, host={len(host_ports)}")
 
         # NEW: 端口就绪后立即发送一轮 LLDP，避免等待线程导致“卡住”
         for pno in ports:
@@ -102,11 +305,14 @@ class MySimpleSwitch13(app_manager.RyuApp):
         self._local_dpids.add(dp.id)
 
         # 映射 dpid -> 预设边界名（按发现顺序），不足时回退 dpid:xxxx
-        if dp.id not in self._dpid_name:
+        new_switch = dp.id not in self._dpid_name
+        if new_switch:
             idx = len(self._dpid_name)
             name = self.boundary_switches[idx] if idx < len(self.boundary_switches) else f"dpid:{dp.id:016x}"
             self._dpid_name[dp.id] = name
             self.logger.info(f"[CC] map dpid={dp.id} -> name={name}")
+            # Send topology update to AC when new switch discovered
+            hub.spawn(lambda: (hub.sleep(0.5), self._send_topology_update()))
 
         # 优先级最高：LLDP punt 给控制器
         dp.send_msg(parser.OFPFlowMod(
@@ -125,10 +331,8 @@ class MySimpleSwitch13(app_manager.RyuApp):
                                                                                ofp.OFPCML_NO_BUFFER)])]
         ))
 
-        # 查询端口并启动本地 LLDP 发送线程
+        # 查询端口 (LLDP TX loop will be started when state becomes MAIN_DISPATCHER)
         self._request_port_desc(dp)
-        if dp.id not in self._lldp_tx_threads:
-            self._lldp_tx_threads[dp.id] = hub.spawn(self._lldp_tx_loop, dp.id)
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def packet_in_handler(self, ev):
@@ -136,14 +340,31 @@ class MySimpleSwitch13(app_manager.RyuApp):
         dp = msg.datapath
         pkt = packet.Packet(msg.data)
         eth = pkt.get_protocol(ethernet.ethernet)
-        if not eth or eth.ethertype != ether_types.ETH_TYPE_LLDP:
+        if not eth:
             return
+        
+        # Log all packet-ins for debugging
+        in_port = msg.match.get('in_port', 'unknown')
+        self.logger.info(f"[CC] Packet-in: dpid={dp.id:016x} port={in_port} src={eth.src} dst={eth.dst} ethertype={hex(eth.ethertype)}")
+        
+        # Handle LLDP packets for topology discovery
+        if eth.ethertype == ether_types.ETH_TYPE_LLDP:
+            self._handle_lldp_packet(msg, dp, pkt, eth)
+            return
+        
+        # Handle regular traffic for cross-cluster routing
+        self._handle_data_packet(msg, dp, pkt, eth)
+    
+    def _handle_lldp_packet(self, msg, dp, pkt, eth):
+        """Handle LLDP packets for topology discovery"""
         pkt_lldp = pkt.get_protocol(lldp.lldp)
         if not pkt_lldp:
             return
 
         peer_dpid, peer_port = None, None
         local_port = msg.match.get("in_port")
+        peer_mac = eth.src  # Capture peer port MAC from ethernet source
+        
         try:
             for tlv in pkt_lldp.tlvs:
                 if isinstance(tlv, lldp.ChassisID):
@@ -185,6 +406,16 @@ class MySimpleSwitch13(app_manager.RyuApp):
         lk = self._make_link_key(dp.id, local_port, peer_dpid, peer_port)
         # 记录到缓存，供周期性重发
         self._pending_links[lk] = (local_name, int(local_port), int(peer_dpid), int(peer_port))
+        
+        # NEW: Track this as a boundary port for inter-cluster forwarding
+        # Since peer_dpid is not in _local_dpids, this is an inter-cluster link
+        if dp.id not in self._boundary_ports:
+            self._boundary_ports[dp.id] = set()
+        self._boundary_ports[dp.id].add(int(local_port))
+        
+        # Store peer port MAC address for underlay forwarding (from LLDP packet source)
+        self._peer_port_mac[(dp.id, int(local_port))] = peer_mac
+        self.logger.info(f"[CC] ✓ Identified boundary port: port {local_port} (MAC {self._port_mac.get((dp.id, int(local_port)), 'unknown')}) on dpid={dp.id:016x} connects to remote cluster (peer MAC {peer_mac})")
 
         # 首次强制上报；后续按时间窗抑制
         now = time.time()
@@ -199,9 +430,368 @@ class MySimpleSwitch13(app_manager.RyuApp):
         upd.cluster_id = self.cluster_id
         le_local = upd.links.add(); le_local.switch_id = local_name; le_local.port_no = int(local_port); le_local.link_key = lk
         le_peer = upd.links.add();  le_peer.switch_id = f"dpid:{peer_dpid:016x}"; le_peer.port_no = int(peer_port); le_peer.link_key = lk
-        data = message.encode_envelope(message_pb2.Envelope.INTERCLUSTER_LINK_UPDATE, upd)
-        self.logger.info(f"[CC] LLDP跨域邻居: local={local_name}:{local_port} peer_dpid={peer_dpid}:{peer_port} lk={lk} -> send update bytes={len(data)}")
+        
+        # Create envelope with message ID for tracking
+        envelope = message_pb2.Envelope()
+        envelope.type = message_pb2.Envelope.INTERCLUSTER_LINK_UPDATE
+        envelope.msg_id = self._next_msg_id()
+        envelope.intercluster_link_update.CopyFrom(upd)
+        data = envelope.SerializeToString()
+        
+        self.logger.info(f"[CC] LLDP跨域邻居: local={local_name}:{local_port} peer_dpid={peer_dpid}:{peer_port} lk={lk} msg_id={envelope.msg_id} -> send update bytes={len(data)}")
         self._send_bytes(data)
+    
+    def _handle_data_packet(self, msg, dp, pkt, eth):
+        """Handle data packets for cross-cluster routing"""
+        ofproto = dp.ofproto
+        parser = dp.ofproto_parser
+        in_port = msg.match['in_port']
+        
+        # Learn MAC address to avoid FLOOD next time
+        src_mac = eth.src
+        dst_mac = eth.dst
+        dpid = dp.id
+        
+        # Learn source MAC
+        self._mac_to_port.setdefault(dpid, {})
+        if src_mac not in self._mac_to_port[dpid]:
+            self.logger.info(f"[CC] Learned local MAC: {src_mac} on switch dpid={dpid:016x} port={in_port}")
+        self._mac_to_port[dpid][src_mac] = in_port
+        self._local_hosts.add(src_mac)
+        
+        # Extract IP information for cross-cluster detection
+        pkt_ipv4 = pkt.get_protocol(ipv4.ipv4)
+        pkt_arp = pkt.get_protocol(arp.arp)
+        
+        src_ip = None
+        dst_ip = None
+        
+        if pkt_ipv4:
+            src_ip = pkt_ipv4.src
+            dst_ip = pkt_ipv4.dst
+            
+            # REACTIVE HOST DISCOVERY: Learn IP→MAC binding from first IPv4 packet
+            # This is the SDN-native approach - controller actively discovers hosts from traffic
+            # Check if this is from a host-facing port (not a boundary/inter-cluster port)
+            is_boundary = (dp.id in self._boundary_ports and 
+                          in_port in self._boundary_ports[dp.id])
+            
+            if not is_boundary and src_ip and src_ip not in self._ip_to_mac:
+                # First time seeing this IP - reactive discovery!
+                self._ip_to_mac[src_ip] = src_mac
+                # Use tuple key for MAC→Port mapping
+                self._mac_to_port[(dp.id, src_mac)] = in_port
+                
+                # Determine cluster from IP range (10-19=cluster1, 20-29=cluster2, etc.)
+                cluster_id = self._get_cluster_from_ip(src_ip)
+                if cluster_id:
+                    self._ip_to_cluster[src_ip] = cluster_id
+                
+                self.logger.info(f"[CC] ✓ Reactive host discovery: {src_ip} -> {src_mac}, "
+                               f"port={in_port}, dpid={dp.id:016x}, cluster={cluster_id}")
+        
+        elif pkt_arp:
+            src_ip = pkt_arp.src_ip
+            dst_ip = pkt_arp.dst_ip
+            # Learn IP->MAC mapping from ARP packets
+            self._ip_to_mac[src_ip] = pkt_arp.src_mac
+            # Learn IP->cluster mapping
+            src_cluster_id = self._get_cluster_from_ip(src_ip)
+            if src_cluster_id:
+                self._ip_to_cluster[src_ip] = src_cluster_id
+        
+        # Handle ARP packets specially for cross-cluster communication
+        if pkt_arp:
+            if self._handle_arp_packet(msg, dp, pkt, eth, pkt_arp):
+                # ARP handled (proxied or forwarded), don't continue
+                return
+        
+        # Check destination cluster
+        dst_cluster = None
+        if dst_ip:
+            dst_cluster = self._get_cluster_from_ip(dst_ip)
+        
+        # Check if destination is local
+        out_port = self._mac_to_port.get(dpid, {}).get(dst_mac)
+        
+        # Determine if this is cross-cluster traffic
+        if dst_cluster and dst_cluster != self.cluster_id:
+            self.logger.info(f"[CC] *** CROSS-CLUSTER TRAFFIC DETECTED ***")
+            self.logger.info(f"[CC]     Source: {src_ip} (cluster {self.cluster_id})")
+            self.logger.info(f"[CC]     Destination: {dst_ip} (cluster {dst_cluster})")
+            self.logger.info(f"[CC]     This is NOT local traffic - need AC routing")
+            self._request_cross_cluster_path(src_ip, dst_ip, src_mac, dst_mac)
+            # Still forward the packet (flood if no port known)
+            if out_port is None:
+                out_port = ofproto.OFPP_FLOOD
+        elif out_port is None:
+            # Unknown destination but same cluster - flood
+            self.logger.info(f"[CC] Unknown local destination {dst_mac}, flooding")
+            out_port = ofproto.OFPP_FLOOD
+        else:
+            # Known local destination
+            self.logger.info(f"[CC] Forwarding to known local port {out_port}")
+        
+        # Install a flow to avoid packet_in next time for local traffic
+        actions = [parser.OFPActionOutput(out_port)]
+        
+        # Send packet out
+        data = None
+        if msg.buffer_id == ofproto.OFP_NO_BUFFER:
+            data = msg.data
+        
+        out = parser.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id,
+                                  in_port=in_port, actions=actions, data=data)
+        dp.send_msg(out)
+    
+    def _get_cluster_from_ip(self, ip_addr):
+        """Extract cluster ID from IP address based on last octet ranges
+        
+        IP Range -> Cluster mapping:
+        10.10.0.10-19 -> cluster 1
+        10.10.0.20-29 -> cluster 2
+        10.10.0.30-39 -> cluster 3
+        etc.
+        
+        Formula: cluster_id = last_octet // 10
+        """
+        try:
+            # First check if we've explicitly learned this IP's cluster
+            if ip_addr in self._ip_to_cluster:
+                return self._ip_to_cluster[ip_addr]
+            
+            parts = ip_addr.split('.')
+            if len(parts) == 4:
+                # Extract last octet: 10.10.0.X
+                last_octet = int(parts[3])
+                
+                # Determine cluster from last octet: 10-19=cluster1, 20-29=cluster2, etc.
+                cluster_id = last_octet // 10
+                
+                if cluster_id > 0:  # Valid cluster IDs start from 1
+                    return cluster_id
+        except:
+            pass
+        return None
+    
+    def _get_gateway_mac_for_cluster(self, cluster_id):
+        """Get or create virtual gateway MAC for a cluster"""
+        if cluster_id not in self._cluster_gateway_macs:
+            # Create virtual MAC: 02:00:00:00:0C:XX where XX is cluster_id
+            self._cluster_gateway_macs[cluster_id] = f"02:00:00:00:0c:{cluster_id:02x}"
+        return self._cluster_gateway_macs[cluster_id]
+    
+    def _handle_arp_packet(self, msg, dp, pkt, eth, pkt_arp):
+        """
+        Handle ARP packets with BIDIRECTIONAL cross-cluster ARP proxy support.
+        Returns True if ARP was handled (proxied), False if normal processing should continue.
+        """
+        ofproto = dp.ofproto
+        parser = dp.ofproto_parser
+        in_port = msg.match['in_port']
+        
+        # Learn from both ARP requests and replies
+        src_ip = pkt_arp.src_ip
+        src_mac = pkt_arp.src_mac
+        
+        # Always learn IP->MAC mapping from any ARP packet
+        mac_was_new = False
+        if src_ip and src_mac:
+            if src_ip not in self._ip_to_mac:
+                mac_was_new = True
+                self.logger.info(f"[CC] Learned new IP->MAC mapping: {src_ip} -> {src_mac}")
+            self._ip_to_mac[src_ip] = src_mac
+            src_cluster_id = self._get_cluster_from_ip(src_ip)
+            if src_cluster_id:
+                self._ip_to_cluster[src_ip] = src_cluster_id
+            # If this is new MAC learning, update any pending flows
+            if mac_was_new:
+                self._update_flows_for_learned_mac(src_ip, src_mac, dp.id)
+        
+        # Learn from ARP replies too
+        if pkt_arp.opcode == arp.ARP_REPLY:
+            if pkt_arp.dst_ip and pkt_arp.dst_mac:
+                if pkt_arp.dst_ip not in self._ip_to_mac:
+                    self.logger.info(f"[CC] Learned IP->MAC from ARP reply: {pkt_arp.dst_ip} -> {pkt_arp.dst_mac}")
+                self._ip_to_mac[pkt_arp.dst_ip] = pkt_arp.dst_mac
+                self._update_flows_for_learned_mac(pkt_arp.dst_ip, pkt_arp.dst_mac, dp.id)
+            return False  # Let reply through normally
+        
+        # Only proxy ARP requests
+        if pkt_arp.opcode != arp.ARP_REQUEST:
+            return False
+        
+        dst_ip = pkt_arp.dst_ip
+        
+        self.logger.info(f"[CC] ARP Request: who has {dst_ip}? Tell {src_ip} ({src_mac})")
+        
+        # Check if this is a cross-cluster ARP request
+        dst_cluster = self._get_cluster_from_ip(dst_ip)
+        src_cluster = self._get_cluster_from_ip(src_ip)
+        
+        self.logger.info(f"[CC] ARP: src_cluster={src_cluster}, dst_cluster={dst_cluster}, my_cluster={self.cluster_id}")
+        
+        # Proxy ARP if destination is in another cluster
+        # This enables BIDIRECTIONAL communication by having each cluster proxy for remote IPs
+        if dst_cluster and dst_cluster != self.cluster_id:
+            self.logger.info(f"[CC] *** CROSS-CLUSTER ARP DETECTED ***")
+            self.logger.info(f"[CC]     ARP Request from cluster {self.cluster_id} for IP {dst_ip} in cluster {dst_cluster}")
+            self.logger.info(f"[CC]     Generating ARP proxy reply with virtual gateway MAC")
+            
+            # Get virtual gateway MAC for the destination cluster
+            gateway_mac = self._get_gateway_mac_for_cluster(dst_cluster)
+            
+            # Send ARP reply with virtual gateway MAC
+            self._send_arp_reply(dp, in_port, gateway_mac, dst_ip, src_mac, src_ip)
+            
+            # NOTE: Do NOT install forwarding flows during ARP stage!
+            # ARP stage only resolves "who should I send to" (gateway MAC)
+            # Actual forwarding flows are installed by AC during flow installation phase
+            # Installing flows here would create conflicts with AC's L3 routing flows
+            
+            # Request BIDIRECTIONAL cross-cluster path from AC for actual routing
+            # The AC and flow installation will handle both directions
+            self._request_cross_cluster_path(src_ip, dst_ip, src_mac, gateway_mac)
+            
+            return True  # ARP handled, don't flood
+        
+        # Local ARP or unknown - let normal flooding handle it
+        return False
+    
+    def _send_arp_reply(self, dp, in_port, src_mac, src_ip, dst_mac, dst_ip):
+        """Send an ARP reply packet"""
+        ofproto = dp.ofproto
+        parser = dp.ofproto_parser
+        
+        # Build ARP reply
+        pkt = packet.Packet()
+        pkt.add_protocol(ethernet.ethernet(
+            ethertype=ether_types.ETH_TYPE_ARP,
+            dst=dst_mac,
+            src=src_mac))
+        pkt.add_protocol(arp.arp(
+            opcode=arp.ARP_REPLY,
+            src_mac=src_mac,
+            src_ip=src_ip,
+            dst_mac=dst_mac,
+            dst_ip=dst_ip))
+        pkt.serialize()
+        
+        # Send packet out
+        actions = [parser.OFPActionOutput(in_port)]
+        out = parser.OFPPacketOut(
+            datapath=dp,
+            buffer_id=ofproto.OFP_NO_BUFFER,
+            in_port=ofproto.OFPP_CONTROLLER,
+            actions=actions,
+            data=pkt.data)
+        dp.send_msg(out)
+        
+        self.logger.info(f"[CC] ✓ Sent ARP Reply: {src_ip} is at {src_mac} to {dst_ip} ({dst_mac}) on port {in_port}")
+    
+    def _send_arp_request(self, dp, target_ip, ports=None):
+        """
+        Send ARP request to discover MAC address for a target IP.
+        This is used by destination clusters to actively probe for host MACs.
+        """
+        ofproto = dp.ofproto
+        parser = dp.ofproto_parser
+        
+        # Use switch's virtual MAC as source
+        switch_mac = self._switch_mac.get(dp.id, f"02:00:00:{self.cluster_id:02x}:00:00")
+        
+        # Use a virtual gateway IP for the source (cluster-specific)
+        # Format: 10.10.X.254 where X is cluster ID
+        src_ip = f"10.10.{self.cluster_id}.254"
+        
+        # Build ARP request
+        pkt = packet.Packet()
+        pkt.add_protocol(ethernet.ethernet(
+            ethertype=ether_types.ETH_TYPE_ARP,
+            dst="ff:ff:ff:ff:ff:ff",  # Broadcast
+            src=switch_mac))
+        pkt.add_protocol(arp.arp(
+            opcode=arp.ARP_REQUEST,
+            src_mac=switch_mac,
+            src_ip=src_ip,
+            dst_mac="00:00:00:00:00:00",  # Unknown
+            dst_ip=target_ip))
+        pkt.serialize()
+        
+        # Send to all host-facing ports (not GRE ports)
+        if ports is None:
+            ports = self._host_ports.get(dp.id, set())
+        
+        if not ports:
+            self.logger.warning(f"[CC] Cannot send ARP request for {target_ip}: no host ports available")
+            return
+        
+        # Send packet out to all host-facing ports
+        for port_no in ports:
+            actions = [parser.OFPActionOutput(port_no)]
+            out = parser.OFPPacketOut(
+                datapath=dp,
+                buffer_id=ofproto.OFP_NO_BUFFER,
+                in_port=ofproto.OFPP_CONTROLLER,
+                actions=actions,
+                data=pkt.data)
+            dp.send_msg(out)
+        
+        self.logger.info(f"[CC] ✓ Sent ARP Request: who has {target_ip}? (broadcasted to {len(ports)} host ports)")
+    
+    def _request_cross_cluster_path(self, src_ip, dst_ip, src_mac, dst_mac):
+        """Request cross-cluster path from AC"""
+        try:
+            src_cluster = self.cluster_id
+            # Use _get_cluster_from_ip to determine destination cluster
+            dst_cluster = self._get_cluster_from_ip(dst_ip)
+            
+            if dst_cluster is None:
+                self.logger.warning(f"[CC] Cannot determine cluster ID for IP {dst_ip}")
+                return
+            
+            if dst_cluster == src_cluster:
+                # Same cluster, no need for cross-cluster routing
+                self.logger.info(f"[CC] Same cluster {src_cluster}, no cross-cluster routing needed")
+                return
+            
+            # Check if we already have a pending request
+            req_key = (src_cluster, dst_cluster)
+            now = time.time()
+            if req_key in self._flow_requests_pending:
+                last_req = self._flow_requests_pending[req_key]
+                if now - last_req < 5.0:  # Don't spam requests
+                    self.logger.info(f"[CC] FlowRequest for C{src_cluster}->C{dst_cluster} already pending (within 5s), skipping")
+                    return
+            
+            self._flow_requests_pending[req_key] = now
+            
+            self.logger.info(f"[CC] ===== SENDING FLOW REQUEST TO AC =====")
+            self.logger.info(f"[CC]   Source Cluster: {src_cluster}")
+            self.logger.info(f"[CC]   Destination Cluster: {dst_cluster}")
+            self.logger.info(f"[CC]   Source IP: {src_ip}")
+            self.logger.info(f"[CC]   Destination IP: {dst_ip}")
+            
+            # Send FlowRequest to AC
+            req = message_pb2.FlowRequest()
+            req.src_cluster = src_cluster
+            req.dst_cluster = dst_cluster
+            req.match_fields['src_ip'] = src_ip
+            req.match_fields['dst_ip'] = dst_ip
+            # Note: MAC addresses are NOT sent to AC - AC only handles L3 routing
+            # Each CC determines appropriate MACs locally based on its role
+            
+            envelope = message_pb2.Envelope()
+            envelope.type = message_pb2.Envelope.FLOW_REQUEST
+            envelope.msg_id = self._next_msg_id()
+            envelope.flow_request.CopyFrom(req)
+            data = envelope.SerializeToString()
+            
+            self.logger.info(f"[CC] FlowRequest sent: C{src_cluster}->C{dst_cluster}, msg_id={envelope.msg_id}, bytes={len(data)}")
+            self._send_bytes(data)
+            
+        except Exception as e:
+            self.logger.error(f"[CC] FlowRequest error: {e}", exc_info=True)
 
     def _make_link_key(self, a_dpid, a_port, b_dpid, b_port):
         ends = sorted([(int(a_dpid), int(a_port)), (int(b_dpid), int(b_port))])
@@ -232,11 +822,10 @@ class MySimpleSwitch13(app_manager.RyuApp):
         hub.spawn(self._ac_reader, sock)
 
         # 非阻塞发送循环：队列空时小睡避免卡死
-        from queue import Empty
         while True:
             try:
                 data = self._send_q.get_nowait()
-            except Empty:
+            except hub.QueueEmpty:
                 hub.sleep(0.2)
                 continue
             try:
@@ -260,26 +849,70 @@ class MySimpleSwitch13(app_manager.RyuApp):
             self._send_q.put_nowait(data)
         except Exception:
             self.logger.warning("[CC] send queue full, drop")
+    
+    def _next_msg_id(self):
+        """Generate next message ID atomically"""
+        with self._msg_counter_lock:
+            self._msg_counter += 1
+            return self._msg_counter
+    
+    def _heartbeat_loop(self):
+        """Send periodic heartbeats to AC for health monitoring"""
+        heartbeat_interval = 10.0  # seconds
+        while True:
+            try:
+                hub.sleep(heartbeat_interval)
+                keepalive = message_pb2.Keepalive()
+                keepalive.ts_ms = int(time.time() * 1000)
+                data = message.encode_envelope(message_pb2.Envelope.KEEPALIVE, keepalive)
+                self._send_bytes(data)
+                self.logger.debug(f"[CC] Heartbeat sent to AC")
+            except Exception as e:
+                self.logger.debug(f"[CC] Heartbeat error: {e}")
 
     def _periodic_advertise_loop(self):
         interval = max(1.0, self._lk_resend_sec / 2.0)
+        self.logger.info(f"[CC] Periodic advertise loop started: interval={interval}s, resend_sec={self._lk_resend_sec}s")
+        loop_count = 0
         while True:
             try:
+                hub.sleep(interval)
+                loop_count += 1
                 now = time.time()
+                pending_count = len(self._pending_links)
+                
+                # Log more frequently initially
+                if loop_count <= 5 or loop_count % 5 == 0:
+                    self.logger.info(f"[CC] Periodic loop #{loop_count}: checking {pending_count} pending links")
+                
+                resent_count = 0
                 for lk, (lname, lport, pdpid, pport) in list(self._pending_links.items()):
                     last = self._link_last_sent.get(lk, 0)
-                    if now - last >= self._lk_resend_sec:
+                    elapsed = now - last
+                    if elapsed >= self._lk_resend_sec:
                         upd = message_pb2.InterClusterLinkUpdate()
                         upd.cluster_id = self.cluster_id
                         le_local = upd.links.add(); le_local.switch_id = lname; le_local.port_no = int(lport); le_local.link_key = lk
                         le_peer  = upd.links.add(); le_peer.switch_id  = f"dpid:{pdpid:016x}"; le_peer.port_no = int(pport); le_peer.link_key = lk
-                        data = message.encode_envelope(message_pb2.Envelope.INTERCLUSTER_LINK_UPDATE, upd)
-                        self.logger.info(f"[CC] RE-ADVERTISE lk={lk} {lname}:{lport} <-> dpid:{pdpid:016x}:{pport}")
+                        
+                        # Create envelope with message ID
+                        envelope = message_pb2.Envelope()
+                        envelope.type = message_pb2.Envelope.INTERCLUSTER_LINK_UPDATE
+                        envelope.msg_id = self._next_msg_id()
+                        envelope.intercluster_link_update.CopyFrom(upd)
+                        data = envelope.SerializeToString()
+                        
+                        self.logger.info(f"[CC] RE-ADVERTISE lk={lk} {lname}:{lport} <-> dpid:{pdpid:016x}:{pport} msg_id={envelope.msg_id} elapsed={elapsed:.1f}s")
                         self._send_bytes(data)
                         self._link_last_sent[lk] = now
+                        resent_count += 1
+                    else:
+                        self.logger.debug(f"[CC] Skip lk={lk}: elapsed={elapsed:.1f}s < {self._lk_resend_sec}s")
+                
+                if resent_count > 0:
+                    self.logger.info(f"[CC] Periodic loop #{loop_count}: re-sent {resent_count}/{pending_count} links")
             except Exception as e:
-                self.logger.debug(f"[CC] periodic advertise error: {e}")
-            hub.sleep(interval)
+                self.logger.warning(f"[CC] Periodic advertise error: {e}", exc_info=True)
 
     def _send_topology_update(self):
         topo = message_pb2.TopologyUpdate()
@@ -303,21 +936,369 @@ class MySimpleSwitch13(app_manager.RyuApp):
                 env = message.decode_envelope(data)
                 if env.type == message_pb2.Envelope.FLOW_REPLY:
                     fr = env.flow_reply
-                    self.logger.info(f"[CC] FLOW_REPLY path={list(fr.path)} segments={len(fr.segments)} match={dict(fr.match_fields)}")
+                    self.logger.info(f"[CC] ===== RECEIVED FLOW REPLY FROM AC =====")
+                    self.logger.info(f"[CC]   Path: {list(fr.path)}")
+                    self.logger.info(f"[CC]   Segments: {len(fr.segments)}")
+                    self.logger.info(f"[CC]   Match fields: {dict(fr.match_fields)}")
+                    self._install_flow_from_reply(fr)
             except Exception as e:
                 self.logger.warning(f"[CC] AC reader error: {e}")
                 break
+    
+    def _install_flow_from_reply(self, flow_reply):
+        """
+        Install flows based on FlowReply from AC - with proper L3 routing.
+        Implements bidirectional flows with:
+        - TTL decrement
+        - MAC rewriting (src_mac to switch MAC, dst_mac to next-hop)
+        - Proper port selection (GRE for egress, host-facing for ingress)
+        """
+        try:
+            match_fields = dict(flow_reply.match_fields)
+            path = list(flow_reply.path)
+            
+            self.logger.info(f"[CC] ===== INSTALLING L3 FLOWS FROM AC REPLY =====")
+            self.logger.info(f"[CC]   Path to follow: {path}")
+            self.logger.info(f"[CC]   Match fields: {match_fields}")
+            
+            # Find the segment for this cluster
+            my_segment = None
+            for seg in flow_reply.segments:
+                if seg.cluster_id == self.cluster_id:
+                    my_segment = seg
+                    break
+            
+            if not my_segment:
+                self.logger.warning(f"[CC] No segment for cluster {self.cluster_id} in reply, installing flows without segment info")
+            else:
+                self.logger.info(f"[CC] Found segment for cluster {self.cluster_id}")
+            
+            # Extract IPs (MACs are determined locally by each CC based on its role)
+            dst_ip = match_fields.get('dst_ip')
+            src_ip = match_fields.get('src_ip')
+            
+            if not dst_ip or not src_ip:
+                self.logger.warning(f"[CC] Missing src_ip or dst_ip in match fields, cannot install flow")
+                return
+            
+            # Determine cluster role based on path from AC (NOT from IP addresses!)
+            # path = [src_cluster, intermediate_clusters..., dst_cluster]
+            if not path or len(path) < 2:
+                self.logger.warning(f"[CC] Invalid path {path}, cannot determine cluster role")
+                return
+            
+            # Convert path elements to integers for comparison
+            path_int = [int(c) for c in path]
+            src_cluster = path_int[0]
+            dst_cluster = path_int[-1]
+            my_cluster = self.cluster_id
+            
+            # Determine role: source, intermediate, or destination
+            is_source_cluster = (my_cluster == src_cluster)
+            is_dest_cluster = (my_cluster == dst_cluster)
+            is_intermediate_cluster = (my_cluster in path_int[1:-1]) if len(path_int) > 2 else False
+            
+            self.logger.info(f"[CC] Cluster role: src={src_cluster}, dst={dst_cluster}, my={my_cluster}, is_source={is_source_cluster}, is_dest={is_dest_cluster}, is_intermediate={is_intermediate_cluster}")
+            
+            # Install BIDIRECTIONAL L3 flows on each switch
+            installed_count = 0
+            for dpid, dp in self._datapaths.items():
+                parser = dp.ofproto_parser
+                ofproto = dp.ofproto
+                
+                switch_mac = self._switch_mac.get(dpid, f"02:00:00:{self.cluster_id:02x}:00:00")
+                gre_ports = self._gre_ports.get(dpid, set())
+                host_ports = self._host_ports.get(dpid, set())
+                
+                # === FORWARD FLOW: traffic going TO dst_ip ===
+                if is_source_cluster or not is_dest_cluster:
+                    # Source or intermediate cluster: forward to boundary/inter-cluster port
+                    boundary_ports = self._boundary_ports.get(dpid, set())
+                    egress_port = None
+                    
+                    # Try to find boundary port from LLDP-discovered links first
+                    for lk, (lname, lport, pdpid, pport) in self._pending_links.items():
+                        if lname == self._dpid_name.get(dpid) and lport in boundary_ports:
+                            egress_port = lport
+                            break
+                    
+                    # Fallback: use any boundary port
+                    if egress_port is None and boundary_ports:
+                        egress_port = list(boundary_ports)[0]
+                    
+                    # Fallback: use GRE ports if no boundary ports found
+                    if egress_port is None:
+                        for lk, (lname, lport, pdpid, pport) in self._pending_links.items():
+                            if lname == self._dpid_name.get(dpid) and lport in gre_ports:
+                                egress_port = lport
+                                break
+                        if egress_port is None and gre_ports:
+                            egress_port = list(gre_ports)[0]
+                    
+                    if egress_port:
+                        # L3 forward flow: match dst_ip, dec TTL, rewrite MACs for underlay forwarding
+                        match_fwd = parser.OFPMatch(eth_type=0x0800, ipv4_dst=dst_ip)
+                        
+                        # Use actual port MAC addresses for underlay (adhoc wireless) forwarding
+                        # eth_src = local boundary port MAC (this OVS's data port MAC)
+                        # eth_dst = peer boundary port MAC (remote OVS's data port MAC)
+                        local_port_mac = self._port_mac.get((dpid, egress_port))
+                        peer_port_mac = self._peer_port_mac.get((dpid, egress_port))
+                        
+                        if local_port_mac and peer_port_mac:
+                            # Use underlay MAC addresses for direct L2 forwarding over adhoc
+                            actions_fwd = [
+                                parser.OFPActionDecNwTtl(),
+                                parser.OFPActionSetField(eth_src=local_port_mac),
+                                parser.OFPActionSetField(eth_dst=peer_port_mac),
+                                parser.OFPActionOutput(egress_port)
+                            ]
+                            log_src_mac = local_port_mac
+                            log_dst_mac = peer_port_mac
+                            self.logger.info(f"[CC] ✓ Using underlay MACs for cross-cluster: local={local_port_mac}, peer={peer_port_mac}")
+                        else:
+                            # Fallback: use switch MAC if port MACs not available
+                            dst_router_mac = f"02:00:00:{dst_cluster:02x}:00:00"  # Generic router MAC for dst cluster
+                            actions_fwd = [
+                                parser.OFPActionDecNwTtl(),
+                                parser.OFPActionSetField(eth_src=switch_mac),
+                                parser.OFPActionSetField(eth_dst=dst_router_mac),
+                                parser.OFPActionOutput(egress_port)
+                            ]
+                            log_src_mac = switch_mac
+                            log_dst_mac = dst_router_mac
+                            self.logger.info(f"[CC] ⚠ Port MACs not available (local={local_port_mac}, peer={peer_port_mac}), using fallback")
+                        
+                        inst_fwd = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions_fwd)]
+                        mod_fwd = parser.OFPFlowMod(datapath=dp, priority=15,
+                                               match=match_fwd, instructions=inst_fwd,
+                                               idle_timeout=30, hard_timeout=60)
+                        dp.send_msg(mod_fwd)
+                        self.logger.info(f"[CC] ✓ Installed L3 FORWARD flow: dst_ip={dst_ip} -> TTL-1, src_mac={log_src_mac}, dst_mac={log_dst_mac}, port={egress_port}")
+                        installed_count += 1
+                
+                elif is_dest_cluster:
+                    # Destination cluster: forward to host port
+                    # Find host port for the destination MAC (pre-learned from port discovery)
+                    dst_mac_learned = self._ip_to_mac.get(dst_ip)
+                    ingress_port = None
+                    
+                    if dst_mac_learned:
+                        ingress_port = self._mac_to_port.get((dpid, dst_mac_learned))
+                    
+                    # Only install flow if we have learned the destination MAC
+                    if dst_mac_learned and ingress_port:
+                        # L3 forward to local host: match ONLY on dst_ip (standard L3 routing)
+                        # Do NOT match on eth_dst - MAC is hop-by-hop and can vary across inter-cluster links
+                        # This is proper L3 SDN routing: match on IP (L3), rewrite MAC (L2) for local delivery
+                        match_fwd = parser.OFPMatch(eth_type=0x0800, ipv4_dst=dst_ip)
+                        actions_fwd = [
+                            parser.OFPActionDecNwTtl(),
+                            parser.OFPActionSetField(eth_src=switch_mac),
+                            parser.OFPActionSetField(eth_dst=dst_mac_learned),
+                            parser.OFPActionOutput(ingress_port)
+                        ]
+                        inst_fwd = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions_fwd)]
+                        mod_fwd = parser.OFPFlowMod(datapath=dp, priority=20,  # Higher priority for L3 routing
+                                               match=match_fwd, instructions=inst_fwd,
+                                               idle_timeout=30, hard_timeout=60)
+                        dp.send_msg(mod_fwd)
+                        self.logger.info(f"[CC] ✓ Installed L3 FORWARD flow to host: dst_ip={dst_ip} -> TTL-1, src_mac={switch_mac}, dst_mac={dst_mac_learned}, port={ingress_port}")
+                        installed_count += 1
+                    else:
+                        # MAC not learned - trigger active ARP probing
+                        self.logger.info(f"[CC] ⚠ MAC not learned for {dst_ip}, sending ARP request to discover host")
+                        self._send_arp_request(dp, dst_ip, host_ports)
+                        
+                        # Install table-miss-like flow to send to controller for MAC resolution
+                        # Match ONLY on dst_ip (standard L3 routing), not on eth_dst
+                        # MAC is hop-by-hop and can vary across inter-cluster links
+                        match_fwd = parser.OFPMatch(eth_type=0x0800, ipv4_dst=dst_ip)
+                        actions_fwd = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER)]
+                        inst_fwd = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions_fwd)]
+                        mod_fwd = parser.OFPFlowMod(datapath=dp, priority=15,  # Medium priority
+                                               match=match_fwd, instructions=inst_fwd,
+                                               idle_timeout=5)
+                        dp.send_msg(mod_fwd)
+                        self.logger.info(f"[CC] ⚠ Installed L3 FORWARD flow to CONTROLLER (MAC not learned): dst_ip={dst_ip}, will upgrade after ARP response")
+                        installed_count += 1
+                
+                # === RETURN FLOW: traffic going back FROM dst_ip TO src_ip ===
+                if is_dest_cluster or not is_source_cluster:
+                    # Destination or intermediate cluster: return to boundary/inter-cluster port
+                    boundary_ports = self._boundary_ports.get(dpid, set())
+                    egress_port = None
+                    
+                    # Try to find boundary port from LLDP-discovered links first
+                    for lk, (lname, lport, pdpid, pport) in self._pending_links.items():
+                        if lname == self._dpid_name.get(dpid) and lport in boundary_ports:
+                            egress_port = lport
+                            break
+                    
+                    # Fallback: use any boundary port
+                    if egress_port is None and boundary_ports:
+                        egress_port = list(boundary_ports)[0]
+                    
+                    # Fallback: use GRE ports if no boundary ports found
+                    if egress_port is None:
+                        for lk, (lname, lport, pdpid, pport) in self._pending_links.items():
+                            if lname == self._dpid_name.get(dpid) and lport in gre_ports:
+                                egress_port = lport
+                                break
+                        if egress_port is None and gre_ports:
+                            egress_port = list(gre_ports)[0]
+                    
+                    if egress_port:
+                        # L3 return flow: match dst_ip (return to source), dec TTL, rewrite MACs for underlay forwarding
+                        match_ret = parser.OFPMatch(eth_type=0x0800, ipv4_dst=src_ip)
+                        
+                        # Use actual port MAC addresses for underlay (adhoc wireless) forwarding
+                        # eth_src = local boundary port MAC (this OVS's data port MAC)
+                        # eth_dst = peer boundary port MAC (remote OVS's data port MAC)
+                        local_port_mac = self._port_mac.get((dpid, egress_port))
+                        peer_port_mac = self._peer_port_mac.get((dpid, egress_port))
+                        
+                        if local_port_mac and peer_port_mac:
+                            # Use underlay MAC addresses for direct L2 forwarding over adhoc
+                            actions_ret = [
+                                parser.OFPActionDecNwTtl(),
+                                parser.OFPActionSetField(eth_src=local_port_mac),
+                                parser.OFPActionSetField(eth_dst=peer_port_mac),
+                                parser.OFPActionOutput(egress_port)
+                            ]
+                            log_src_mac = local_port_mac
+                            log_dst_mac = peer_port_mac
+                        else:
+                            # Fallback: use switch MAC if port MACs not available
+                            src_router_mac = f"02:00:00:{src_cluster:02x}:00:00"  # Generic router MAC for src cluster
+                            actions_ret = [
+                                parser.OFPActionDecNwTtl(),
+                                parser.OFPActionSetField(eth_src=switch_mac),
+                                parser.OFPActionSetField(eth_dst=src_router_mac),
+                                parser.OFPActionOutput(egress_port)
+                            ]
+                            log_src_mac = switch_mac
+                            log_dst_mac = src_router_mac
+                        
+                        inst_ret = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions_ret)]
+                        mod_ret = parser.OFPFlowMod(datapath=dp, priority=15,
+                                               match=match_ret, instructions=inst_ret,
+                                               idle_timeout=30, hard_timeout=60)
+                        dp.send_msg(mod_ret)
+                        self.logger.info(f"[CC] ✓ Installed L3 RETURN flow: dst_ip={src_ip} -> TTL-1, src_mac={log_src_mac}, dst_mac={log_dst_mac}, port={egress_port}")
+                        installed_count += 1
+                
+                elif is_source_cluster:
+                    # Source cluster: return to host port
+                    src_mac_learned = self._ip_to_mac.get(src_ip)
+                    ingress_port = None
+                    
+                    if src_mac_learned:
+                        ingress_port = self._mac_to_port.get((dpid, src_mac_learned))
+                    
+                    # Only install flow if we have learned the source MAC
+                    if src_mac_learned and ingress_port:
+                        # L3 return to local host: match ONLY on dst_ip
+                        # Packets arriving from inter-cluster may have generic router MAC (02:00:00:CLUSTER:00:00)
+                        # set by previous hop, so we match only on L3 (dst_ip)
+                        match_ret = parser.OFPMatch(eth_type=0x0800, ipv4_dst=src_ip)
+                        actions_ret = [
+                            parser.OFPActionDecNwTtl(),
+                            parser.OFPActionSetField(eth_src=switch_mac),
+                            parser.OFPActionSetField(eth_dst=src_mac_learned),
+                            parser.OFPActionOutput(ingress_port)
+                        ]
+                        inst_ret = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions_ret)]
+                        mod_ret = parser.OFPFlowMod(datapath=dp, priority=15,  # Match dst_ip only
+                                               match=match_ret, instructions=inst_ret,
+                                               idle_timeout=30, hard_timeout=60)
+                        dp.send_msg(mod_ret)
+                        self.logger.info(f"[CC] ✓ Installed L3 RETURN flow to host: dst_ip={src_ip} -> TTL-1, src_mac={switch_mac}, dst_mac={src_mac_learned}, port={ingress_port}")
+                        installed_count += 1
+                    else:
+                        # MAC not learned - trigger active ARP probing
+                        self.logger.info(f"[CC] ⚠ MAC not learned for {src_ip}, sending ARP request to discover host")
+                        self._send_arp_request(dp, src_ip, host_ports)
+                        
+                        # Install table-miss-like flow to send to controller for MAC resolution
+                        # Match ONLY on dst_ip (packets arrive with generic router MAC from previous hop)
+                        match_ret = parser.OFPMatch(eth_type=0x0800, ipv4_dst=src_ip)
+                        actions_ret = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER)]
+                        inst_ret = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions_ret)]
+                        mod_ret = parser.OFPFlowMod(datapath=dp, priority=15,  # Medium priority
+                                               match=match_ret, instructions=inst_ret,
+                                               idle_timeout=5)
+                        dp.send_msg(mod_ret)
+                        self.logger.info(f"[CC] ⚠ Installed L3 RETURN flow to CONTROLLER (MAC not learned): dst_ip={src_ip}, will upgrade after ARP response")
+                        installed_count += 1
+            
+            # Store IP-to-cluster mappings for future ARP proxy decisions
+            if src_cluster:
+                self._ip_to_cluster[src_ip] = src_cluster
+            if dst_cluster:
+                self._ip_to_cluster[dst_ip] = dst_cluster
+            
+            self.logger.info(f"[CC] ===== L3 BIDIRECTIONAL FLOW INSTALLATION COMPLETE: {installed_count} flows =====")
+                
+        except Exception as e:
+            self.logger.error(f"[CC] Error installing flow from reply: {e}", exc_info=True)
+    
+    def _update_flows_for_learned_mac(self, ip_addr, mac_addr, dpid):
+        """
+        Update flows when a new MAC address is learned.
+        This upgrades controller flows to proper L3 forwarding flows.
+        """
+        try:
+            if dpid not in self._datapaths:
+                return
+            
+            dp = self._datapaths[dpid]
+            parser = dp.ofproto_parser
+            ofproto = dp.ofproto
+            
+            # Get port for this MAC
+            port = self._mac_to_port.get(dpid, {}).get(mac_addr)
+            if not port:
+                self.logger.debug(f"[CC] No port learned for MAC {mac_addr} yet, will update later")
+                return
+            
+            switch_mac = self._switch_mac.get(dpid, f"02:00:00:{self.cluster_id:02x}:00:00")
+            
+            # Install proper L3 flow now that we know the MAC
+            # This will override the lower-priority controller flow
+            match = parser.OFPMatch(eth_type=0x0800, ipv4_dst=ip_addr)
+            actions = [
+                parser.OFPActionDecNwTtl(),
+                parser.OFPActionSetField(eth_src=switch_mac),
+                parser.OFPActionSetField(eth_dst=mac_addr),
+                parser.OFPActionOutput(port)
+            ]
+            inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions)]
+            mod = parser.OFPFlowMod(datapath=dp, priority=15,  # Higher than controller flow
+                                   match=match, instructions=inst,
+                                   idle_timeout=30, hard_timeout=60)
+            dp.send_msg(mod)
+            self.logger.info(f"[CC] ✓ Updated L3 flow for learned MAC: dst_ip={ip_addr} -> dst_mac={mac_addr}, port={port}")
+        except Exception as e:
+            self.logger.warning(f"[CC] Error updating flow for learned MAC: {e}")
+
 
     def _lldp_tx_loop(self, dpid: int):
         burst = 3
         interval = 2.0
+        loop_count = 0
+        name = self._dpid_name.get(dpid, f"dpid:{dpid:016x}")
+        self.logger.info(f"[CC] LLDP TX loop started for {name} (dpid={dpid}): interval={interval}s")
         while dpid in self._datapaths:
             dp = self._datapaths.get(dpid)
             if not dp:
+                self.logger.warning(f"[CC] LLDP TX loop: datapath {name} disappeared")
                 break
             ports = self._ports.get(dpid, [])
             if not ports:
                 # 尚未拿到端口，重试拉取
+                loop_count += 1
+                self.logger.warning(f"[CC] LLDP TX loop #{loop_count} for {name}: no ports yet, waiting...")
                 try:
                     self._request_port_desc(dp)
                 except Exception:
@@ -326,19 +1307,29 @@ class MySimpleSwitch13(app_manager.RyuApp):
                 continue
             # 启动初期做几轮快速 burst，后续按固定周期
             rounds = 3 if burst > 0 else 1
+            loop_count += 1
+            sent_count = 0
             for _ in range(rounds):
                 for pno in ports:
                     try:
                         self._send_lldp(dp, dpid, int(pno))
+                        sent_count += 1
                     except Exception as e:
-                        self.logger.debug(f"[CC] LLDP tx error dpid={dpid} port={pno}: {e}")
+                        self.logger.warning(f"[CC] LLDP tx error dpid={dpid} port={pno}: {e}")
                 burst = max(0, burst - 1)
+            
+            # Log every iteration for first 5, then every 5th iteration
+            if loop_count <= 5 or loop_count % 5 == 0:
+                self.logger.info(f"[CC] LLDP TX loop #{loop_count} for {name}: sent {sent_count} packets to {len(ports)} ports")
+            
             hub.sleep(interval)
 
     def _send_lldp(self, dp, dpid: int, port_no: int):
-        # 构造 LLDP 帧：dst=01:80:c2:00:00:0e, src 任意本地 MAC
+        # 构造 LLDP 帧：dst=01:80:c2:00:00:0e, src=actual port MAC for underlay forwarding
+        # Use actual port MAC as source so peer can learn it for inter-cluster forwarding
+        port_mac = self._port_mac.get((dpid, port_no), '02:00:00:00:00:01')
         eth = ethernet.ethernet(dst=lldp.LLDP_MAC_NEAREST_BRIDGE,
-                                src='02:00:00:00:00:01',
+                                src=port_mac,
                                 ethertype=ether_types.ETH_TYPE_LLDP)
         tlvs = [
             lldp.ChassisID(subtype=lldp.ChassisID.SUB_LOCALLY_ASSIGNED,

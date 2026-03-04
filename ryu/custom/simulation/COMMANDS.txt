@@ -1,0 +1,80 @@
+═══════════════════════════════════════════════════════════════════════
+  NS-3 Routing Performance Comparison - Test Commands
+═══════════════════════════════════════════════════════════════════════
+
+LOCATION:
+cd ryu/custom/simulation
+
+───────────────────────────────────────────────────────────────────────
+1. THREE-CLUSTER SCENARIO (C1→C3) - Basic Verification
+───────────────────────────────────────────────────────────────────────
+
+python3 performance_comparison.py --scenario 3_cluster --src 1 --dst 3
+
+Expected: Both algorithms find optimal C1→C3 path (1 hop)
+
+───────────────────────────────────────────────────────────────────────
+2. FIVE-CLUSTER SCENARIO (C1→C4) - Scalability Verification
+───────────────────────────────────────────────────────────────────────
+
+python3 performance_comparison.py --scenario 5_cluster --src 1 --dst 4
+
+Expected: Both algorithms find optimal C1→C5→C4 path (2 hops)
+
+───────────────────────────────────────────────────────────────────────
+3. COMPLETE COMPARISON WITH GRAPHS
+───────────────────────────────────────────────────────────────────────
+
+python3 performance_comparison.py --all
+
+Generates:
+  - performance_comparison.png      (bar charts)
+  - improvement_comparison.png       (improvement %)
+
+───────────────────────────────────────────────────────────────────────
+4. DIFFERENT TIME SLICES
+───────────────────────────────────────────────────────────────────────
+
+# Time slice 1 (higher loss rates)
+python3 performance_comparison.py --scenario 3_cluster --src 1 --dst 3 --time 1
+
+# Time slice 5 (lower loss rates)
+python3 performance_comparison.py --scenario 3_cluster --src 1 --dst 3 --time 5
+
+───────────────────────────────────────────────────────────────────────
+5. CUSTOM WEIGHT PARAMETERS (QoS Scenarios)
+───────────────────────────────────────────────────────────────────────
+
+# Delay-sensitive (real-time applications)
+python3 performance_comparison.py --all --alpha 0.5 --beta 0.2 --gamma 0.3
+
+# Loss-sensitive (reliable applications)
+python3 performance_comparison.py --all --alpha 0.3 --beta 0.5 --gamma 0.2
+
+# Balanced (default)
+python3 performance_comparison.py --all --alpha 0.4 --beta 0.3 --gamma 0.3
+
+───────────────────────────────────────────────────────────────────────
+6. AUTOMATED TESTING
+───────────────────────────────────────────────────────────────────────
+
+./test_all.sh
+
+Runs all scenarios automatically with default parameters.
+
+═══════════════════════════════════════════════════════════════════════
+  OUTPUT FILES
+═══════════════════════════════════════════════════════════════════════
+
+performance_comparison.png      - Bar charts (delay, loss, hop count)
+improvement_comparison.png       - Performance improvement percentages
+
+Both at 300 DPI resolution for publication use.
+
+═══════════════════════════════════════════════════════════════════════
+  REQUIREMENTS
+═══════════════════════════════════════════════════════════════════════
+
+pip install matplotlib
+
+═══════════════════════════════════════════════════════════════════════

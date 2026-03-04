@@ -1,0 +1,11 @@
+{
+  "cluster_id": 1,
+  "hosts": {
+    "10.10.0.10": {
+      "mac": "9e:c0:48:06:10:83",
+      "port": 9,
+      "dpid": "0x0c826821c8a4",
+      "description": "Host h1 on OVS1"
+    }
+  }
+}

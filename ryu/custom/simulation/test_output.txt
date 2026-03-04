@@ -1,0 +1,232 @@
+Warning: matplotlib not available. Graphs will not be generated.
+Install with: pip install matplotlib
+
+[95m[1m================================================================================[0m
+[95m[1m                             Running All Scenarios                              [0m
+[95m[1m================================================================================[0m
+
+
+[95m[1m================================================================================[0m
+[95m[1m                     Scenario: 3-Cluster (C1→C3) (C1 → C3)                      [0m
+[95m[1m================================================================================[0m
+
+
+[94m[1m[Loading Inter-Cluster Link Metrics (time=1)][0m
+[92m✓ Loaded 6 inter-cluster links[0m
+
+[94m[1m[Loading Cluster Internal Metrics (time=1)][0m
+[92m✓ Loaded metrics for 3 clusters[0m
+
+[94m[1m[CC-AC Protocol Interaction Simulation][0m
+[96m→ Demonstrating hierarchical SDN protocol message flow[0m
+
+[1mPhase 1: CC Metric Collection[0m
+[96m→ CC-1 collects local cluster metrics and inter-cluster link measurements[0m
+  Collected metrics from 3 cluster(s)
+  Measured 6 inter-cluster link(s)
+
+[1mPhase 2: CC Reports Metrics to AC[0m
+
+[96m[1m[CC→AC] INTERCLUSTER_LINK_METRICS[0m
+  • cluster_id: 1
+  • num_links: 2
+  • metrics:
+    - link_key=C1→C2, latency=15.00ms, loss=0.0100
+    - link_key=C1→C3, latency=50.00ms, loss=0.1200
+
+[96m[1m[CC→AC] INTERCLUSTER_LINK_METRICS[0m
+  • cluster_id: 2
+  • num_links: 2
+  • metrics:
+    - link_key=C2→C1, latency=15.00ms, loss=0.0100
+    - link_key=C2→C3, latency=18.00ms, loss=0.0150
+
+[96m[1m[CC→AC] INTERCLUSTER_LINK_METRICS[0m
+  • cluster_id: 3
+  • num_links: 2
+  • metrics:
+    - link_key=C3→C2, latency=18.00ms, loss=0.0150
+    - link_key=C3→C1, latency=50.00ms, loss=0.1200
+[92m✓ AC received and stored all inter-cluster link metrics[0m
+
+[1mPhase 3: Cross-Cluster Flow Request[0m
+[96m→ Host in C1 wants to communicate with host in C3[0m
+[96m→ CC-1 detects cross-cluster traffic and requests path from AC[0m
+
+[96m[1m[CC→AC] FLOW_REQUEST[0m
+  • src_cluster: 1
+  • dst_cluster: 3
+  • match_fields:
+    - dst_ip: 10.30.0.10
+    - src_ip: 10.10.0.10
+
+[1mPhase 4: AC Path Computation and Reply[0m
+[96m→ AC uses routing algorithm to compute cluster-level path[0m
+[96m→ AC considers inter-cluster link metrics and cluster internal costs[0m
+
+[94m[1m[Algorithm 1: Baseline Dijkstra][0m
+[96m→ Path: C1 → C3[0m
+[96m→ Cost: 1.00 hops[0m
+  • End-to-end delay: 61.9512 ms
+  • Average loss: 0.1200 
+  • Hop count: 1.0000 
+
+[94m[1m[Algorithm 2: Cluster-Aware Weighted Dijkstra][0m
+[96m→ Weight formula: w = 0.4·delay + 0.3·loss + 0.3·intra_cost[0m
+[96m→ Path: C1 → C2 → C3[0m
+[96m→ Cost: 0.1637[0m
+  • End-to-end delay: 50.6739 ms
+  • Average loss: 0.0125 
+  • Hop count: 2.0000 
+[92m✓ Path computed: C1 → C2 → C3[0m
+
+[92m[1m[AC→CC] FLOW_REPLY[0m
+  • path:
+    - C1
+    - C2
+    - C3
+  • num_hops: 2
+  • segments:
+    - C1: ingress=entry_port, egress=to_C2
+    - C2: ingress=from_C1, egress=to_C3
+    - C3: ingress=from_C2, egress=exit_port
+  • match_fields:
+    - dst_ip: 10.30.0.10
+    - src_ip: 10.10.0.10
+
+[1mPhase 5: Flow Installation[0m
+[96m→ CC-1 installs forwarding flows based on path segment[0m
+[96m→ CC-2 installs forwarding flows based on path segment[0m
+[96m→ CC-3 installs forwarding flows based on path segment[0m
+[92m✓ Cross-cluster routing path established![0m
+[96m→ Host traffic can now flow across clusters[0m
+
+[94m[1m[Performance Comparison][0m
+  • Delay improvement: 18.2036 %
+  • Loss improvement: 89.5833 %
+[92m✓ Cluster-aware routing shows improvement![0m
+
+[95m[1m================================================================================[0m
+[95m[1m                     Scenario: 5-Cluster (C1→C4) (C1 → C4)                      [0m
+[95m[1m================================================================================[0m
+
+
+[94m[1m[Loading Inter-Cluster Link Metrics (time=1)][0m
+[92m✓ Loaded 12 inter-cluster links[0m
+
+[94m[1m[Loading Cluster Internal Metrics (time=1)][0m
+[92m✓ Loaded metrics for 5 clusters[0m
+
+[94m[1m[CC-AC Protocol Interaction Simulation][0m
+[96m→ Demonstrating hierarchical SDN protocol message flow[0m
+
+[1mPhase 1: CC Metric Collection[0m
+[96m→ CC-1 collects local cluster metrics and inter-cluster link measurements[0m
+  Collected metrics from 5 cluster(s)
+  Measured 12 inter-cluster link(s)
+
+[1mPhase 2: CC Reports Metrics to AC[0m
+
+[96m[1m[CC→AC] INTERCLUSTER_LINK_METRICS[0m
+  • cluster_id: 1
+  • num_links: 3
+  • metrics:
+    - link_key=C1→C2, latency=10.00ms, loss=0.0100
+    - link_key=C1→C5, latency=18.00ms, loss=0.0180
+    - link_key=C1→C4, latency=60.00ms, loss=0.1500
+
+[96m[1m[CC→AC] INTERCLUSTER_LINK_METRICS[0m
+  • cluster_id: 2
+  • num_links: 2
+  • metrics:
+    - link_key=C2→C1, latency=10.00ms, loss=0.0100
+    - link_key=C2→C3, latency=12.00ms, loss=0.0120
+
+[96m[1m[CC→AC] INTERCLUSTER_LINK_METRICS[0m
+  • cluster_id: 3
+  • num_links: 2
+  • metrics:
+    - link_key=C3→C2, latency=12.00ms, loss=0.0120
+    - link_key=C3→C4, latency=14.00ms, loss=0.0140
+
+[96m[1m[CC→AC] INTERCLUSTER_LINK_METRICS[0m
+  • cluster_id: 4
+  • num_links: 3
+  • metrics:
+    - link_key=C4→C3, latency=14.00ms, loss=0.0140
+    - link_key=C4→C5, latency=16.00ms, loss=0.0160
+    - link_key=C4→C1, latency=60.00ms, loss=0.1500
+
+[96m[1m[CC→AC] INTERCLUSTER_LINK_METRICS[0m
+  • cluster_id: 5
+  • num_links: 2
+  • metrics:
+    - link_key=C5→C4, latency=16.00ms, loss=0.0160
+    - link_key=C5→C1, latency=18.00ms, loss=0.0180
+[92m✓ AC received and stored all inter-cluster link metrics[0m
+
+[1mPhase 3: Cross-Cluster Flow Request[0m
+[96m→ Host in C1 wants to communicate with host in C4[0m
+[96m→ CC-1 detects cross-cluster traffic and requests path from AC[0m
+
+[96m[1m[CC→AC] FLOW_REQUEST[0m
+  • src_cluster: 1
+  • dst_cluster: 4
+  • match_fields:
+    - dst_ip: 10.40.0.10
+    - src_ip: 10.10.0.10
+
+[1mPhase 4: AC Path Computation and Reply[0m
+[96m→ AC uses routing algorithm to compute cluster-level path[0m
+[96m→ AC considers inter-cluster link metrics and cluster internal costs[0m
+
+[94m[1m[Algorithm 1: Baseline Dijkstra][0m
+[96m→ Path: C1 → C4[0m
+[96m→ Cost: 1.00 hops[0m
+  • End-to-end delay: 76.3125 ms
+  • Average loss: 0.1500 
+  • Hop count: 1.0000 
+
+[94m[1m[Algorithm 2: Cluster-Aware Weighted Dijkstra][0m
+[96m→ Weight formula: w = 0.4·delay + 0.3·loss + 0.3·intra_cost[0m
+[96m→ Path: C1 → C2 → C3 → C4[0m
+[96m→ Cost: 0.1801[0m
+  • End-to-end delay: 64.0159 ms
+  • Average loss: 0.0120 
+  • Hop count: 3.0000 
+[92m✓ Path computed: C1 → C2 → C3 → C4[0m
+
+[92m[1m[AC→CC] FLOW_REPLY[0m
+  • path:
+    - C1
+    - C2
+    - C3
+    - C4
+  • num_hops: 3
+  • segments:
+    - C1: ingress=entry_port, egress=to_C2
+    - C2: ingress=from_C1, egress=to_C3
+    - C3: ingress=from_C2, egress=to_C4
+    - C4: ingress=from_C3, egress=exit_port
+  • match_fields:
+    - dst_ip: 10.40.0.10
+    - src_ip: 10.10.0.10
+
+[1mPhase 5: Flow Installation[0m
+[96m→ CC-1 installs forwarding flows based on path segment[0m
+[96m→ CC-2 installs forwarding flows based on path segment[0m
+[96m→ CC-3 installs forwarding flows based on path segment[0m
+[96m→ CC-4 installs forwarding flows based on path segment[0m
+[92m✓ Cross-cluster routing path established![0m
+[96m→ Host traffic can now flow across clusters[0m
+
+[94m[1m[Performance Comparison][0m
+  • Delay improvement: 16.1134 %
+  • Loss improvement: 92.0000 %
+[92m✓ Cluster-aware routing shows improvement![0m
+[93m⚠ Matplotlib not available. Skipping graph generation.[0m
+
+[95m[1m================================================================================[0m
+[95m[1m                              Comparison Complete                               [0m
+[95m[1m================================================================================[0m
+
